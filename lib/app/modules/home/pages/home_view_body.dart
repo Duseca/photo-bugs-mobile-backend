@@ -2,7 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import '../../../shared/widgets/optimized_animated_container.dart';
+import '../../../shared/widget/optimized_animated_container.dart';
 
 class HomeViewBody extends StatelessWidget {
   const HomeViewBody({super.key});

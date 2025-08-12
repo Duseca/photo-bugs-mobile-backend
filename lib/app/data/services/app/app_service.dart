@@ -1,7 +1,7 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../../shared/utils/helpers/logger.dart';
@@ -11,7 +11,7 @@ class AppService extends GetxService {
   late final Stream<List<ConnectivityResult>> _connectivityResultStream;
   late final SharedPreferences _sharedPreferences;
   final _currentConnectivity = Rx<ConnectivityResult>(ConnectivityResult.none);
-  late final FlutterSecureStorage _secureStorage;
+
   Future<AppService> init() async {
     await _init();
     return this;
@@ -19,7 +19,6 @@ class AppService extends GetxService {
 
   Future<void> _init() async {
     _sharedPreferences = await SharedPreferences.getInstance();
-    _secureStorage = const FlutterSecureStorage();
   }
 
   Future<FilePickerResult?> pickFile({
@@ -57,9 +56,6 @@ class AppService extends GetxService {
 
   /// shared prefrence instance
   SharedPreferences get sharedPreferences => _sharedPreferences;
-
-  /// Secure Storage
-  FlutterSecureStorage get secureStorage => _secureStorage;
 
   /// env value
   String? getEnv(String key) => dotenv.env[key];

@@ -8,7 +8,7 @@ import 'package:responsive_framework/responsive_framework.dart';
 import 'package:flutter/foundation.dart';
 
 import 'app/shared/utils/helpers/logger.dart';
-import 'app/shared/widgets/global_errorwidget.dart';
+import 'app/shared/widget/global_errorwidget.dart';
 import 'app/shared/locators/service_locator.dart';
 
 Future<void> main() async {
