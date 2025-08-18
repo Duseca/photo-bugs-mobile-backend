@@ -40,6 +40,14 @@ dependencies:
   dropdown_button2: ^2.3.9
   flutter_rating_bar: ^4.0.1
   flutter_switch: ^0.3.2
+  adoptive_calendar: ^0.2.0
+  syncfusion_flutter_sliders: ^30.2.5
+  staggered_grid_view_flutter: ^0.0.4
+  super_tooltip: ^2.1.0
+  flutter_image_stack: ^0.0.7
+  flutter_speed_dial: ^7.0.0
+  step_progress_indicator: ^1.0.2
+  expandable: ^5.0.1
 
 dev_dependencies:
   flutter_test:

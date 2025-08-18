@@ -4,7 +4,7 @@ import 'package:get/get.dart';
 
 import '../controllers/authentication_controller.dart';
 
-class AuthenticationView extends GetView<AuthenticationController> {
+class AuthenticationView extends GetView<AuthController > {
   const AuthenticationView({super.key});
   @override
   Widget build(BuildContext context) {
