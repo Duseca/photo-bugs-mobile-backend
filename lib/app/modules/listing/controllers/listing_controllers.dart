@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:photo_bug/app/core/constants/app_images.dart';
 import 'package:photo_bug/app/models/listings_model/listings_model.dart';
 import 'package:photo_bug/app/modules/add_new_listing/view/add_new_listing.dart';
 import 'package:photo_bug/app/modules/listing/views/listing_details.dart';
 import 'package:photo_bug/app/modules/user_events/widgets/user_image_folder_details.dart';
 import 'package:photo_bug/app/modules/user_events/widgets/user_select_download.dart';
+import 'package:photo_bug/app/routes/app_pages.dart';
+import 'package:photo_bug/main.dart';
 
 class ListingController extends GetxController {
   // Observable variables
@@ -32,15 +35,9 @@ class ListingController extends GetxController {
           title: 'Den & Tina wedding event',
           date: '27 Sep, 2024',
           location: '385 Main Street, Suite 52, USA',
-          imageUrl: 'dummyImg', // Replace with actual image URL
+          imageUrl: dummyImg, // Replace with actual image URL
           status: 'Scheduled',
-          recipients: [
-            'dummyImg',
-            'dummyImg',
-            'dummyImg',
-            'dummyImg',
-            'dummyImg',
-          ],
+          recipients: [dummyImg, dummyImg2, dummyImg, dummyImg2],
           folders: [
             ListingFolder(
               id: 'folder_1',
@@ -56,9 +53,9 @@ class ListingController extends GetxController {
           title: 'Corporate Event 2024',
           date: '15 Oct, 2024',
           location: '123 Business Ave, Downtown, USA',
-          imageUrl: 'dummyImg', // Replace with actual image URL
+          imageUrl: dummyImg2, // Replace with actual image URL
           status: 'Upcoming',
-          recipients: ['dummyImg', 'dummyImg', 'dummyImg'],
+          recipients: [dummyImg, dummyImg2, dummyImg, dummyImg2],
           folders: [
             ListingFolder(
               id: 'folder_2',
@@ -88,15 +85,15 @@ class ListingController extends GetxController {
 
   // Navigate to listing details
   void openListingDetails(ListingItem listing) {
-    Get.to(
-      () => const ListingDetails(),
+    Get.toNamed(
+      Routes.LISTING_DETAILS,
       arguments: {'listingId': listing.id, 'listing': listing},
     );
   }
 
   // Navigate to add new listing
   void addNewListing() {
-    Get.to(() => const AddNewListing());
+    Get.toNamed(Routes.ADD_NEW_LISTING);
   }
 
   // Delete listing
@@ -198,7 +195,7 @@ class ListingDetailsController extends GetxController {
   void downloadInBulk() {
     if (listing.value != null) {
       Get.to(
-        () =>  UserSelectDownload(),
+        () => UserSelectDownload(),
         arguments: {'listingId': listing.value!.id, 'listing': listing.value},
       );
     }

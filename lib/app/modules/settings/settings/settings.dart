@@ -16,6 +16,7 @@ import 'package:photo_bug/app/core/common_widget/custom_bottom_sheet_widget.dart
 import 'package:photo_bug/app/core/common_widget/my_button_widget.dart';
 import 'package:photo_bug/app/core/common_widget/my_text_widget.dart';
 import 'package:photo_bug/app/core/common_widget/simple_app_bar_widget.dart';
+import 'package:photo_bug/app/routes/app_pages.dart';
 import 'package:photo_bug/main.dart';
 
 class Settings extends StatelessWidget {
@@ -48,7 +49,7 @@ class Settings extends StatelessWidget {
             ),
           ),
           MyText(
-            text: 'Hassan',
+            text: 'Shabbir',
             size: 16,
             weight: FontWeight.w600,
             textAlign: TextAlign.center,
@@ -172,7 +173,7 @@ class Settings extends StatelessWidget {
           // SizedBox(
           //   height: 16,
           // ),
-          Container(
+          SizedBox(
             height: 42,
             child: MyRippleEffect(
               onTap: () {
@@ -248,7 +249,7 @@ class Settings extends StatelessWidget {
                     bgColor: kRedColor,
                     buttonText: 'Logout',
                     onTap: () {
-                      Get.offAll(() => Login());
+                      Get.offAllNamed(Routes.LOGIN);
                     },
                   ),
                 ),

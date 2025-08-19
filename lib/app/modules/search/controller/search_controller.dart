@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:photo_bug/app/modules/creator_events/widgets/send_event_quote.dart';
 import 'package:photo_bug/app/modules/search/views/search_details.dart';
+import 'package:photo_bug/app/routes/app_pages.dart';
+import 'package:photo_bug/main.dart';
 
 class SearchController extends GetxController {
   // Observable variables
@@ -74,13 +76,7 @@ class SearchController extends GetxController {
           'type': index % 2 == 0 ? 'Event' : 'Creator',
           'rating': 4.0 + (index % 5),
           'distance': (index + 1) * 2.5,
-          'recipients': [
-            'dummyImg',
-            'dummyImg',
-            'dummyImg',
-            'dummyImg',
-            'dummyImg',
-          ],
+          'recipients': [dummyImg, dummyImg2, dummyImg, dummyImg2, dummyImg],
           'startTime': '02:30 PM',
           'endTime': '04:30 PM',
           'category': 'Wedding',
@@ -228,8 +224,8 @@ class SearchController extends GetxController {
 
   // Navigate to search details
   void navigateToSearchDetails(Map<String, dynamic> result) {
-    Get.to(
-      () => const SearchDetails(),
+    Get.toNamed(
+      Routes.SEARCH_DETAILS,
       arguments: {'resultId': result['id'], 'result': result},
     );
   }
@@ -281,13 +277,7 @@ class SearchDetailsController extends GetxController {
         'image': 'Assets.imagesEventImage',
         'date': '27 Sep, 2024',
         'location': '385 Main Street, Suite 52, USA',
-        'recipients': [
-          'dummyImg',
-          'dummyImg',
-          'dummyImg',
-          'dummyImg',
-          'dummyImg',
-        ],
+        'recipients': [dummyImg2, dummyImg, dummyImg2, dummyImg, dummyImg2],
         'startTime': '02:30 PM',
         'endTime': '04:30 PM',
         'recipientCount': 5,

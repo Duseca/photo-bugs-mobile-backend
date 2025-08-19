@@ -189,12 +189,21 @@ class Home extends GetView<HomeController> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Row(
+                      Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
-                          Icon(
-                            Icons.favorite_border_rounded,
-                            color: kPrimaryColor,
+                          GestureDetector(
+                            onTap:
+                                () =>
+                                    controller.toggleFavorite(index.toString()),
+                            child: Obx(
+                              () => Icon(
+                                controller.isFavorite(index.toString())
+                                    ? Icons.favorite_rounded
+                                    : Icons.favorite_border_rounded,
+                                color: kSecondaryColor,
+                              ),
+                            ),
                           ),
                         ],
                       ),

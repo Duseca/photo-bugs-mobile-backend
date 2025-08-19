@@ -24,7 +24,7 @@ class Favourite extends GetView<FavouriteController> {
     return AppBar(
       titleSpacing: 20,
       title: MyText(
-        text: 'Favorite',
+        text: 'Favourite',
         size: 18,
         color: kTertiaryColor,
         weight: FontWeight.w600,
@@ -95,17 +95,17 @@ class Favourite extends GetView<FavouriteController> {
         );
       }
 
-      return StaggeredGridView.countBuilder(
+      return GridView.builder(
         physics: const NeverScrollableScrollPhysics(),
         shrinkWrap: true,
         padding: EdgeInsets.zero,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        crossAxisCount: 2,
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 0.7, // Adjust this value to control item height
+        ),
         itemCount: controller.filteredItems.length,
-        staggeredTileBuilder: (int index) {
-          return StaggeredTile.count(1, index.isEven ? 1.6 : 1.2);
-        },
         itemBuilder: (context, index) {
           final item = controller.filteredItems[index];
           return _buildGridItem(item, index);
@@ -121,40 +121,65 @@ class Favourite extends GetView<FavouriteController> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: CommonImageView(url: item.imageUrl, radius: 12),
-                ),
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: GestureDetector(
-                    onTap: () => controller.toggleFavorite(item.id),
-                    child: Obx(
-                      () => Icon(
-                        Icons.favorite_rounded,
-                        color: item.isFavorite ? kSecondaryColor : Colors.grey,
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: CommonImageView(
+                        url: item.imageUrl,
+                        radius: 12,
+                        fit: BoxFit.cover,
+                        height: double.infinity,
+                        width: double.infinity,
                       ),
                     ),
                   ),
-                ),
-              ],
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: GestureDetector(
+                      onTap: () => controller.toggleFavorite(item.id),
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.8),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.favorite_rounded,
+                          color:
+                              item.isFavorite ? kSecondaryColor : Colors.grey,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
           Row(
             children: [
-              CommonImageView(
-                url: item.authorImage,
-                height: 24,
-                width: 24,
-                radius: 100,
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: CommonImageView(
+                  url: item.authorImage,
+                  height: 24,
+                  width: 24,
+                  radius: 12,
+                  fit: BoxFit.cover,
+                ),
               ),
-              const SizedBox(width: 5),
+              const SizedBox(width: 8),
               Expanded(
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     MyText(
                       text: item.authorName,
@@ -162,8 +187,8 @@ class Favourite extends GetView<FavouriteController> {
                       weight: FontWeight.w500,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      paddingBottom: 2,
                     ),
+                    const SizedBox(height: 2),
                     MyText(
                       text: 'Size: ${item.size}',
                       size: 10,

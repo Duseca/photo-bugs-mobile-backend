@@ -18,6 +18,7 @@ import 'package:photo_bug/app/modules/search/views/search_screen.dart';
 import 'package:photo_bug/app/modules/storage/views/storage.dart';
 import 'package:photo_bug/app/modules/image_detail/view/image_detail_view.dart';
 import 'package:photo_bug/app/modules/bottom_nav_bar/view/bottom_nav.dart';
+import 'package:photo_bug/app/routes/app_pages.dart';
 import 'package:staggered_grid_view_flutter/widgets/staggered_grid_view.dart';
 import 'package:staggered_grid_view_flutter/widgets/staggered_tile.dart';
 
@@ -27,6 +28,16 @@ class HomeController extends GetxController {
   final RxBool isListView = false.obs;
   final RxBool isLoading = false.obs;
   final RxString selectedSortOption = ''.obs;
+  final RxMap<String, bool> favoriteStates = <String, bool>{}.obs;
+
+  void toggleFavorite(String itemId) {
+    favoriteStates[itemId] = !(favoriteStates[itemId] ?? false);
+    // Add your API call or local storage logic here
+  }
+
+  bool isFavorite(String itemId) {
+    return favoriteStates[itemId] ?? false;
+  }
 
   // Dummy image URL
   final String dummyImg =
@@ -37,12 +48,12 @@ class HomeController extends GetxController {
     {
       'icon': Assets.imagesCalendar,
       'label': 'My listing',
-      'onTap': () => Get.to(() => Listing()),
+      'onTap': () => Get.toNamed(Routes.LISTING),
     },
     {
       'icon': Assets.imagesCalendar,
       'label': 'My Event',
-      'onTap': () => Get.to(() => UserEvents()),
+      'onTap': () => Get.toNamed(Routes.USER_EVENTS),
     },
     {
       'icon': Assets.imagesFeedback,
@@ -52,12 +63,12 @@ class HomeController extends GetxController {
     {
       'icon': Assets.imagesSearchCreator,
       'label': 'Search',
-      'onTap': () => Get.to(() => SearchScreen()),
+      'onTap': () => Get.toNamed(Routes.SEARCH_SCREEN),
     },
     {
       'icon': Assets.imagesStorage,
       'label': 'My Storage',
-      'onTap': () => Get.to(() => Storage()),
+      'onTap': () => Get.toNamed(Routes.STORAGE),
     },
   ];
 
@@ -68,7 +79,14 @@ class HomeController extends GetxController {
 
   // Navigate to image details
   void navigateToImageDetails() {
-    Get.to(() => ImageDetails());
+    Get.toNamed(
+      Routes.IMAGE_DETAILS,
+      arguments: {
+        'imageUrl': dummyImg,
+        'imageTitle': 'Sample Image',
+        'imageDescription': 'This is a sample image description.',
+      },
+    );
   }
 
   // Show sort options
@@ -201,7 +219,7 @@ class ReportController extends GetxController {
             'Your report has been submitted, our team is looking into it.',
         btnText: 'Continue',
         onTap: () {
-          Get.offAll(() => BottomNavBar());
+          Get.offAllNamed(Routes.BOTTOM_NAV_BAR);
         },
       ),
     );

@@ -2,6 +2,7 @@ import 'package:get/get.dart';
 import 'package:photo_bug/app/modules/home/screens/order_summary.dart';
 import 'package:photo_bug/app/models/image_detail_model/image_detail_model.dart';
 import 'package:photo_bug/app/modules/user_events/widgets/other_user_profile.dart';
+import 'package:photo_bug/main.dart';
 
 class ImageDetailsController extends GetxController {
   // Observable variables
@@ -27,7 +28,7 @@ class ImageDetailsController extends GetxController {
     try {
       // Simulate API call - replace with actual API call
       await Future.delayed(const Duration(milliseconds: 500));
-      
+
       // Sample data - replace with actual API data
       final sampleMetadata = ImageMetadata(
         resolution: '1024x768',
@@ -56,9 +57,9 @@ class ImageDetailsController extends GetxController {
 
       final sampleImageDetail = ImageDetail(
         id: imageId.value.isNotEmpty ? imageId.value : 'sample_id',
-        imageUrl: 'dummyImg', // Replace with actual image URL
+        imageUrl: dummyImg, // Replace with actual image URL
         authorName: 'BakrBlazee',
-        authorImage: 'dummyImg', // Replace with actual author image URL
+        authorImage: dummyImg2, // Replace with actual author image URL
         title: 'Nezuko wrapped sticker on a gtr car',
         viewCount: 200,
         price: 200.0,
@@ -66,7 +67,7 @@ class ImageDetailsController extends GetxController {
         metadata: sampleMetadata,
         keywords: sampleKeywords,
       );
-      
+
       imageDetail.value = sampleImageDetail;
       isFavorite.value = sampleImageDetail.isFavorite;
     } catch (e) {
@@ -80,20 +81,19 @@ class ImageDetailsController extends GetxController {
   void toggleFavorite() async {
     try {
       isFavorite.value = !isFavorite.value;
-      
+
       // Update the image detail object
       if (imageDetail.value != null) {
         imageDetail.value = imageDetail.value!.copyWith(
           isFavorite: isFavorite.value,
         );
       }
-      
+
       // Simulate API call to update favorite status
       await Future.delayed(const Duration(milliseconds: 300));
-      
+
       // Here you would make actual API call
       // await apiService.toggleFavorite(imageDetail.value!.id, isFavorite.value);
-      
     } catch (e) {
       // Revert on error
       isFavorite.value = !isFavorite.value;

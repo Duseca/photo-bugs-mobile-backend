@@ -1,3 +1,5 @@
+// ignore_for_file: unused_local_variable
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:photo_bug/app/models/add_listings_model/add_listing_model.dart';
@@ -31,19 +33,25 @@ class AddListingController extends GetxController {
   void _initializeControllers() {
     final fields = [
       // Common fields
-      'name', 'eventName', 'location', 'description', 'date', 'timeStart', 'timeEnd',
+      'name',
+      'eventName',
+      'location',
+      'description',
+      'date',
+      'timeStart',
+      'timeEnd',
       'keywords', 'email', 'phoneNumber', 'socialMediaLinks',
       // Creator specific
       'prices', 'experienceQualifications',
       // Host event specific
       'hostOrganizerName', 'expectedAttendees', 'budgetCompensation',
-      'specialRequirements', 'eventTheme', 'applicationDeadline'
+      'specialRequirements', 'eventTheme', 'applicationDeadline',
     ];
 
     for (String field in fields) {
       textControllers[field] = TextEditingController();
       focusNodes[field] = FocusNode();
-      
+
       // Add listeners to validate form
       textControllers[field]!.addListener(_validateForm);
     }
@@ -77,15 +85,15 @@ class AddListingController extends GetxController {
   // Validate creator form
   bool _validateCreatorForm() {
     return textControllers['name']!.text.isNotEmpty &&
-           textControllers['email']!.text.isNotEmpty &&
-           textControllers['location']!.text.isNotEmpty;
+        textControllers['email']!.text.isNotEmpty &&
+        textControllers['location']!.text.isNotEmpty;
   }
 
   // Validate host event form
   bool _validateHostEventForm() {
     return textControllers['eventName']!.text.isNotEmpty &&
-           textControllers['email']!.text.isNotEmpty &&
-           textControllers['location']!.text.isNotEmpty;
+        textControllers['email']!.text.isNotEmpty &&
+        textControllers['location']!.text.isNotEmpty;
   }
 
   // Publish listing
@@ -123,11 +131,14 @@ class AddListingController extends GetxController {
       email: textControllers['email']!.text,
       phoneNumber: textControllers['phoneNumber']!.text,
       prices: textControllers['prices']!.text,
-      experienceQualifications: textControllers['experienceQualifications']!.text,
+      experienceQualifications:
+          textControllers['experienceQualifications']!.text,
       keywords: _parseKeywords(textControllers['keywords']!.text),
       servicesOffered: [], // Will be populated from bottom sheet selections
       languagesSpoken: [], // Will be populated from dropdown
-      socialMediaLinks: _parseSocialLinks(textControllers['socialMediaLinks']!.text),
+      socialMediaLinks: _parseSocialLinks(
+        textControllers['socialMediaLinks']!.text,
+      ),
       portfolioImages: [], // Will be populated from file uploads
     );
 
@@ -144,14 +155,17 @@ class AddListingController extends GetxController {
       hostOrganizerName: textControllers['hostOrganizerName']!.text,
       email: textControllers['email']!.text,
       phoneNumber: textControllers['phoneNumber']!.text,
-      expectedAttendees: int.tryParse(textControllers['expectedAttendees']!.text) ?? 0,
+      expectedAttendees:
+          int.tryParse(textControllers['expectedAttendees']!.text) ?? 0,
       budgetCompensation: textControllers['budgetCompensation']!.text,
       specialRequirements: textControllers['specialRequirements']!.text,
       eventTheme: textControllers['eventTheme']!.text,
       keywords: _parseKeywords(textControllers['keywords']!.text),
       eventTypes: [], // Will be populated from bottom sheet selections
       servicesNeeded: [], // Will be populated from bottom sheet selections
-      socialMediaLinks: _parseSocialLinks(textControllers['socialMediaLinks']!.text),
+      socialMediaLinks: _parseSocialLinks(
+        textControllers['socialMediaLinks']!.text,
+      ),
     );
 
     // Here you would make actual API call
@@ -160,12 +174,20 @@ class AddListingController extends GetxController {
 
   // Parse keywords from comma-separated string
   List<String> _parseKeywords(String keywords) {
-    return keywords.split(',').map((k) => k.trim()).where((k) => k.isNotEmpty).toList();
+    return keywords
+        .split(',')
+        .map((k) => k.trim())
+        .where((k) => k.isNotEmpty)
+        .toList();
   }
 
   // Parse social media links
   List<String> _parseSocialLinks(String links) {
-    return links.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty).toList();
+    return links
+        .split('\n')
+        .map((l) => l.trim())
+        .where((l) => l.isNotEmpty)
+        .toList();
   }
 
   // Get text controller
@@ -186,7 +208,7 @@ class EventTypeController extends GetxController {
   final RxList<String> selectedEventTypes = <String>[].obs;
   final RxString searchQuery = ''.obs;
   final RxString otherEventType = ''.obs;
-  
+
   // Text controller for other field
   final TextEditingController otherController = TextEditingController();
 
@@ -219,7 +241,7 @@ class EventTypeController extends GetxController {
         items: ['Concert', 'Festival', 'Theater', 'Comedy Show'],
       ),
     ];
-    
+
     eventCategories.assignAll(sampleEventTypes);
   }
 
@@ -250,13 +272,22 @@ class EventTypeController extends GetxController {
   // Get filtered categories based on search
   List<ServiceCategory> get filteredCategories {
     if (searchQuery.value.isEmpty) return eventCategories;
-    
-    return eventCategories.map((category) {
-      final filteredItems = category.items.where((item) =>
-          item.toLowerCase().contains(searchQuery.value.toLowerCase())).toList();
-      
-      return ServiceCategory(title: category.title, items: filteredItems);
-    }).where((category) => category.items.isNotEmpty).toList();
+
+    return eventCategories
+        .map((category) {
+          final filteredItems =
+              category.items
+                  .where(
+                    (item) => item.toLowerCase().contains(
+                      searchQuery.value.toLowerCase(),
+                    ),
+                  )
+                  .toList();
+
+          return ServiceCategory(title: category.title, items: filteredItems);
+        })
+        .where((category) => category.items.isNotEmpty)
+        .toList();
   }
 
   // Continue with selection
@@ -275,7 +306,7 @@ class ServicesController extends GetxController {
   final RxList<String> selectedServices = <String>[].obs;
   final RxString searchQuery = ''.obs;
   final RxString serviceType = ''.obs; // 'needed' or 'offered'
-  
+
   // Text controller for other field
   final TextEditingController otherController = TextEditingController();
 
@@ -296,13 +327,13 @@ class ServicesController extends GetxController {
   // Load services based on type
   void loadServices() {
     List<ServiceCategory> services;
-    
+
     if (serviceType.value == 'offered') {
       services = _getServicesOffered();
     } else {
       services = _getServicesNeeded();
     }
-    
+
     serviceCategories.assignAll(services);
   }
 
@@ -311,11 +342,21 @@ class ServicesController extends GetxController {
     return [
       ServiceCategory(
         title: 'Photography',
-        items: ['Wedding Photography', 'Portrait Photography', 'Event Photography', 'Product Photography'],
+        items: [
+          'Wedding Photography',
+          'Portrait Photography',
+          'Event Photography',
+          'Product Photography',
+        ],
       ),
       ServiceCategory(
         title: 'Videography',
-        items: ['Wedding Videography', 'Corporate Videos', 'Music Videos', 'Documentary'],
+        items: [
+          'Wedding Videography',
+          'Corporate Videos',
+          'Music Videos',
+          'Documentary',
+        ],
       ),
       ServiceCategory(
         title: 'Design',
@@ -333,7 +374,12 @@ class ServicesController extends GetxController {
       ),
       ServiceCategory(
         title: 'Technical Services',
-        items: ['Sound Engineer', 'Lighting Technician', 'Video Editor', 'Live Streaming'],
+        items: [
+          'Sound Engineer',
+          'Lighting Technician',
+          'Video Editor',
+          'Live Streaming',
+        ],
       ),
       ServiceCategory(
         title: 'Event Services',
@@ -368,13 +414,22 @@ class ServicesController extends GetxController {
   // Get filtered categories
   List<ServiceCategory> get filteredCategories {
     if (searchQuery.value.isEmpty) return serviceCategories;
-    
-    return serviceCategories.map((category) {
-      final filteredItems = category.items.where((item) =>
-          item.toLowerCase().contains(searchQuery.value.toLowerCase())).toList();
-      
-      return ServiceCategory(title: category.title, items: filteredItems);
-    }).where((category) => category.items.isNotEmpty).toList();
+
+    return serviceCategories
+        .map((category) {
+          final filteredItems =
+              category.items
+                  .where(
+                    (item) => item.toLowerCase().contains(
+                      searchQuery.value.toLowerCase(),
+                    ),
+                  )
+                  .toList();
+
+          return ServiceCategory(title: category.title, items: filteredItems);
+        })
+        .where((category) => category.items.isNotEmpty)
+        .toList();
   }
 
   // Continue with selection

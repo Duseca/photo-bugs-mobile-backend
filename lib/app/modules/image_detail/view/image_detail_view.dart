@@ -96,7 +96,7 @@ class ImageDetails extends GetView<ImageDetailsController> {
           child: ListView(
             padding: EdgeInsets.zero,
             children: [
-              CommonImageView(url: imageDetail.imageUrl, height: 240),
+              CommonImageView(url: imageDetail.imageUrl, height: 270),
               Padding(
                 padding: AppSizes.DEFAULT,
                 child: Column(

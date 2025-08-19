@@ -26,20 +26,20 @@ class BuyStorage extends GetView<BuyStorageController> {
   }
 
   Widget _buildStorageOptionsList() {
-    return Obx(
-      () => ListView.builder(
-        padding: AppSizes.DEFAULT,
-        itemCount: controller.storageOptions.length,
-        itemBuilder: (context, index) {
-          final option = controller.storageOptions[index];
-          return CustomRadioTile(
+    return ListView.builder(
+      padding: AppSizes.DEFAULT,
+      itemCount: controller.storageOptions.length,
+      itemBuilder: (context, index) {
+        final option = controller.storageOptions[index];
+        return Obx(
+          () => CustomRadioTile(
             title: option['title'],
             price: option['price'],
             isSelected: controller.selectedIndex.value == index,
             onTap: () => controller.selectOption(index),
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 

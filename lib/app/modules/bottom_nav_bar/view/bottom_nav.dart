@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:photo_bug/app/core/constants/app_colors.dart';
 import 'package:photo_bug/app/modules/bottom_nav_bar/controller/bottom_nav_controller.dart';
 
 // Import your screen widgets
@@ -42,7 +43,7 @@ class BottomNavBar extends GetView<BottomNavController> {
   Widget _buildBottomNavigationBar() {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: kTertiaryColor,
         boxShadow: [
           BoxShadow(
             color: Colors.grey.withOpacity(0.3),
@@ -92,10 +93,8 @@ class BottomNavBar extends GetView<BottomNavController> {
                       controller.getTabIcon(index),
                       width: 24,
                       height: 24,
-                      color:
-                          isSelected
-                              ? Theme.of(Get.context!).primaryColor
-                              : Colors.grey[600],
+
+                      color: isSelected ? kSecondaryColor : kQuaternaryColor,
                     ),
                   ),
                   // Badge
@@ -132,10 +131,8 @@ class BottomNavBar extends GetView<BottomNavController> {
                 controller.getTabLabel(index),
                 style: TextStyle(
                   fontSize: 10,
-                  color:
-                      isSelected
-                          ? Theme.of(Get.context!).primaryColor
-                          : Colors.grey[600],
+
+                  color: isSelected ? kSecondaryColor : kQuaternaryColor,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                 ),
                 maxLines: 1,

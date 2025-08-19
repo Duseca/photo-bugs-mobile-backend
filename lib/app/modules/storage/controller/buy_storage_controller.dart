@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 
 import 'package:photo_bug/app/modules/storage/views/storage_order_summary.dart';
 import 'package:photo_bug/app/modules/user_events/widgets/user_select_payment_method.dart';
+import 'package:photo_bug/app/routes/app_pages.dart';
 
 class BuyStorageController extends GetxController {
   // Observable variables
@@ -33,8 +34,8 @@ class BuyStorageController extends GetxController {
   // Navigate to order summary
   void proceedToBuy() {
     if (selectedIndex.value >= 0) {
-      Get.to(
-        () => const StorageOrderSummary(),
+      Get.toNamed(
+        Routes.STORAGE_ORDER_SUMMARY,
         arguments: {
           'selectedOption': selectedOption,
           'selectedIndex': selectedIndex.value,

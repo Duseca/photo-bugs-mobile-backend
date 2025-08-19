@@ -15,6 +15,7 @@ import 'package:photo_bug/app/core/common_widget/my_text_field_widget.dart';
 
 import 'package:photo_bug/app/core/common_widget/payment_method_tile_widget.dart';
 import 'package:photo_bug/app/core/common_widget/simple_app_bar_widget.dart';
+import 'package:photo_bug/app/routes/app_pages.dart';
 
 class UserSelectPaymentMethod extends StatelessWidget {
   final bool? isSingleImagePayment, isStoragePayment;
@@ -68,7 +69,7 @@ class UserSelectPaymentMethod extends StatelessWidget {
                           'You successfully purchased Image12347974.jpg.',
                       btnText: 'Browse more images',
                       onTap: () {
-                        Get.offAll(() => BottomNavBar());
+                        Get.offAllNamed(Routes.BOTTOM_NAV_BAR);
                       },
                     ),
                   );
@@ -80,7 +81,7 @@ class UserSelectPaymentMethod extends StatelessWidget {
                           'Wohoo! Your storage capacity has been upgraded.',
                       btnText: 'Continue',
                       onTap: () {
-                        Get.offAll(() => BottomNavBar());
+                        Get.offAllNamed(Routes.BOTTOM_NAV_BAR);
                       },
                     ),
                   );

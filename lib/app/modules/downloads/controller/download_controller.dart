@@ -1,6 +1,7 @@
 import 'package:get/get.dart';
 import 'package:photo_bug/app/models/download_model/download_model.dart';
 import 'package:photo_bug/app/modules/downloads/view/download_details.dart';
+import 'package:photo_bug/app/routes/app_pages.dart';
 
 class DownloadsController extends GetxController {
   // Observable variables
@@ -47,8 +48,8 @@ class DownloadsController extends GetxController {
 
   // Navigate to download details
   void openDownloadDetails(DownloadMonth month) {
-    Get.to(
-      () => const DownloadDetails(),
+    Get.toNamed(
+      Routes.DOWNLOAD_DETAILS,
       arguments: {'monthId': month.id, 'monthName': month.month},
     );
   }

@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:photo_bug/app/modules/creator_events/widgets/creator_event_details.dart';
 import 'package:photo_bug/app/modules/user_events/widgets/user_add_event.dart';
 import 'package:photo_bug/app/modules/user_events/widgets/user_event_details.dart';
+import 'package:photo_bug/main.dart';
 
 class UserEventsController extends GetxController
     with GetSingleTickerProviderStateMixin {
@@ -53,7 +54,7 @@ class UserEventsController extends GetxController
         {
           'id': '1',
           'title': 'Den & Tina wedding event',
-          'image': 'dummyImg',
+          'image': dummyImg,
           'date': '27 Sep, 2024',
           'location': '385 Main Street, Suite 52, USA',
           'eventType': 'Scheduled',
@@ -63,7 +64,7 @@ class UserEventsController extends GetxController
         {
           'id': '2',
           'title': 'Corporate Annual Meeting',
-          'image': 'dummyImg',
+          'image': dummyImg2,
           'date': '30 Sep, 2024',
           'location': '123 Business Ave, Downtown, USA',
           'eventType': 'Pending',
@@ -77,7 +78,7 @@ class UserEventsController extends GetxController
         {
           'id': '3',
           'title': 'Birthday Celebration',
-          'image': 'dummyImg',
+          'image': dummyImg2,
           'date': '28 Sep, 2024',
           'location': '456 Party Lane, City, USA',
           'eventType': 'Scheduled',
@@ -87,7 +88,7 @@ class UserEventsController extends GetxController
         {
           'id': '4',
           'title': 'Art Exhibition Opening',
-          'image': 'dummyImg',
+          'image': dummyImg,
           'date': '01 Oct, 2024',
           'location': '789 Gallery St, Arts District, USA',
           'eventType': 'Pending',

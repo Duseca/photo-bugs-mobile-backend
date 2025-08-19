@@ -53,65 +53,76 @@ class SelectInterest extends StatelessWidget {
           children: [
             // Instructions
             MyText(
-              text: 'Select your areas of interest to get personalized recommendations',
+              text:
+                  'Select your areas of interest to get personalized recommendations',
               size: 14,
               color: kQuaternaryColor,
               paddingBottom: 24,
               textAlign: TextAlign.center,
             ),
-            
+
             // Selected count
-            Obx(() => MyText(
-              text: 'Selected: ${authController.selectedInterests.length}',
-              size: 12,
-              color: kSecondaryColor,
-              weight: FontWeight.w600,
-              paddingBottom: 16,
-            )),
-            
+            Obx(
+              () => MyText(
+                text: 'Selected: ${authController.selectedInterests.length}',
+                size: 12,
+                color: kSecondaryColor,
+                weight: FontWeight.w600,
+                paddingBottom: 16,
+              ),
+            ),
+
             // Interest options
             Expanded(
-              child: Obx(() => Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: List.generate(
-                  authController.interestOptions.length,
-                  (index) {
-                    final interest = authController.interestOptions[index];
-                    return IntrinsicWidth(
-                      child: _CustomToggleButton(
-                        text: interest,
-                        isSelected: authController.isInterestSelected(interest),
-                        onTap: () => authController.toggleInterest(interest),
-                      ),
-                    );
-                  },
-                ),
-              )),
-            ),
-            
-            // Finish Button
-            Obx(() => MyButton(
-              buttonText: authController.selectedInterests.isEmpty 
-                  ? 'Skip for now' 
-                  : 'Finish (${authController.selectedInterests.length})',
-              isLoading: authController.isLoading.value,
-              onTap: () {
-                Get.dialog(
-                  CongratsDialog(
-                    title: 'Profile Completed',
-                    congratsText: authController.selectedInterests.isEmpty
-                        ? 'You can always update your interests later in settings.'
-                        : 'Your profile has been successfully completed with ${authController.selectedInterests.length} interests.',
-                    btnText: 'Go to Home',
-                    onTap: () {
-                      Get.back(); // Close dialog
-                      authController.finishRegistration();
+              child: Obx(
+                () => Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: List.generate(
+                    authController.interestOptions.length,
+                    (index) {
+                      final interest = authController.interestOptions[index];
+                      return IntrinsicWidth(
+                        child: _CustomToggleButton(
+                          text: interest,
+                          isSelected: authController.isInterestSelected(
+                            interest,
+                          ),
+                          onTap: () => authController.toggleInterest(interest),
+                        ),
+                      );
                     },
                   ),
-                );
-              },
-            )),
+                ),
+              ),
+            ),
+
+            // Finish Button
+            Obx(
+              () => MyButton(
+                buttonText:
+                    authController.selectedInterests.isEmpty
+                        ? 'Skip for now'
+                        : 'Finish (${authController.selectedInterests.length})',
+                isLoading: authController.isLoading.value,
+                onTap: () {
+                  Get.dialog(
+                    CongratsDialog(
+                      title: 'Profile Completed',
+                      congratsText:
+                          authController.selectedInterests.isEmpty
+                              ? 'You can always update your interests later in settings.'
+                              : 'Your profile has been successfully completed with ${authController.selectedInterests.length} interests.',
+                      btnText: 'Go to Home',
+                      onTap: () {
+                        Get.back(); // Close dialog
+                        authController.finishRegistration();
+                      },
+                    ),
+                  );
+                },
+              ),
+            ),
           ],
         ),
       ),
@@ -123,8 +134,9 @@ class _CustomToggleButton extends StatelessWidget {
   final String text;
   final bool isSelected;
   final VoidCallback onTap;
-  
+
   const _CustomToggleButton({
+    // ignore: unused_element_parameter
     super.key,
     required this.text,
     required this.isSelected,
@@ -139,12 +151,10 @@ class _CustomToggleButton extends StatelessWidget {
       decoration: BoxDecoration(
         color: isSelected ? kSecondaryColor : Colors.transparent,
         borderRadius: BorderRadius.circular(50),
-        border: isSelected
-            ? null
-            : Border.all(
-                width: 1.0,
-                color: kInputBorderColor,
-              ),
+        border:
+            isSelected
+                ? null
+                : Border.all(width: 1.0, color: kInputBorderColor),
       ),
       child: MyRippleEffect(
         onTap: onTap,
@@ -177,7 +187,7 @@ class MyRippleEffect extends StatelessWidget {
   final Widget child;
   final VoidCallback onTap;
   final double radius;
-  
+
   const MyRippleEffect({
     super.key,
     required this.child,

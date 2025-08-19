@@ -47,67 +47,69 @@ class Storage extends GetView<StorageController> {
       child: Container(
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          border: Border.all(
-            color: kTertiaryColor,
-            width: 4,
+          border: Border.all(color: kTertiaryColor, width: 4),
+        ),
+        child: Obx(
+          () => CircularStepProgressIndicator(
+            height: 156,
+            width: 156,
+            totalSteps: controller.totalSteps.value,
+            currentStep: controller.currentStep.value,
+            padding: 0,
+            selectedStepSize: 10,
+            unselectedStepSize: 10,
+            selectedColor: kSecondaryColor,
+            unselectedColor: kInputBorderColor,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                MyText(text: 'Available', paddingBottom: 2),
+                Obx(
+                  () => MyText(
+                    text: controller.formattedAvailableStorage,
+                    size: 16,
+                    weight: FontWeight.w600,
+                    paddingBottom: 2,
+                  ),
+                ),
+                Obx(
+                  () =>
+                      MyText(text: 'Total ${controller.formattedTotalStorage}'),
+                ),
+              ],
+            ),
           ),
         ),
-        child: Obx(() => CircularStepProgressIndicator(
-          height: 156,
-          width: 156,
-          totalSteps: controller.totalSteps.value,
-          currentStep: controller.currentStep.value,
-          padding: 0,
-          selectedStepSize: 10,
-          unselectedStepSize: 10,
-          selectedColor: kSecondaryColor,
-          unselectedColor: kInputBorderColor,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-               MyText(
-                text: 'Available',
-                paddingBottom: 2,
-              ),
-              Obx(() => MyText(
-                text: controller.formattedAvailableStorage,
-                size: 16,
-                weight: FontWeight.w600,
-                paddingBottom: 2,
-              )),
-              Obx(() => MyText(
-                text: 'Total ${controller.formattedTotalStorage}',
-              )),
-            ],
-          ),
-        )),
       ),
     );
   }
 
   Widget _buildStorageInfoSection() {
-    return Column(
-      children: [
-        _buildStorageInfoItem(
-          color: kTertiaryColor,
-          title: 'Total Storage',
-          value: controller.formattedTotalStorage,
-        ),
-        const SizedBox(height: 24),
-        _buildStorageInfoItem(
-          color: kSecondaryColor,
-          title: 'Available Storage',
-          value: controller.formattedAvailableStorage,
-        ),
-        const SizedBox(height: 24),
-        _buildStorageInfoItem(
-          color: kInputBorderColor,
-          title: 'Used Storage',
-          value: controller.formattedUsedStorage,
-        ),
-        const SizedBox(height: 24),
-      ],
+    return Obx(
+      () => Column(
+        // Move Obx to parent level
+        children: [
+          _buildStorageInfoItem(
+            color: kTertiaryColor,
+            title: 'Total Storage',
+            value: controller.formattedTotalStorage,
+          ),
+          const SizedBox(height: 24),
+          _buildStorageInfoItem(
+            color: kSecondaryColor,
+            title: 'Available Storage',
+            value: controller.formattedAvailableStorage,
+          ),
+          const SizedBox(height: 24),
+          _buildStorageInfoItem(
+            color: kInputBorderColor,
+            title: 'Used Storage',
+            value: controller.formattedUsedStorage,
+          ),
+          const SizedBox(height: 24),
+        ],
+      ),
     );
   }
 
@@ -119,10 +121,7 @@ class Storage extends GetView<StorageController> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        CircleAvatar(
-          radius: 6,
-          backgroundColor: color,
-        ),
+        CircleAvatar(radius: 6, backgroundColor: color),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
@@ -135,7 +134,7 @@ class Storage extends GetView<StorageController> {
                 lineHeight: 1,
                 paddingBottom: 4,
               ),
-              Obx(() => MyText(text: value)),
+              MyText(text: value), // Remove Obx from here
             ],
           ),
         ),

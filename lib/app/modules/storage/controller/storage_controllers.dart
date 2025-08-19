@@ -2,6 +2,7 @@ import 'package:get/get.dart';
 import 'package:photo_bug/app/modules/storage/views/buy_storage.dart';
 import 'package:photo_bug/app/modules/storage/views/storage_order_summary.dart';
 import 'package:photo_bug/app/modules/user_events/widgets/user_select_payment_method.dart';
+import 'package:photo_bug/app/routes/app_pages.dart';
 
 class StorageController extends GetxController {
   // Observable variables for storage data
@@ -43,7 +44,7 @@ class StorageController extends GetxController {
 
   // Navigate to buy storage
   void navigateToBuyStorage() {
-    Get.to(() => BuyStorage());
+    Get.toNamed(Routes.BUY_STORAGE);
   }
 
   // Get formatted storage strings

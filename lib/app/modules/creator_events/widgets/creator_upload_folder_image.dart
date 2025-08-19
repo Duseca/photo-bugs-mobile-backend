@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 
 import 'package:photo_bug/app/core/constants/app_colors.dart';
@@ -94,7 +96,7 @@ class CreatorUploadFolderImage extends StatelessWidget {
 }
 
 class _FolderPrice extends StatelessWidget {
-  const _FolderPrice({super.key});
+  const _FolderPrice();
 
   @override
   Widget build(BuildContext context) {
@@ -162,7 +164,7 @@ class _FolderPrice extends StatelessWidget {
 }
 
 class _BasicPack extends StatelessWidget {
-  const _BasicPack({super.key});
+  const _BasicPack();
 
   @override
   Widget build(BuildContext context) {
@@ -263,7 +265,7 @@ class _BasicPack extends StatelessWidget {
 }
 
 class _StandardPack extends StatelessWidget {
-  const _StandardPack({super.key});
+  const _StandardPack();
 
   @override
   Widget build(BuildContext context) {
@@ -367,7 +369,6 @@ class _ImageTile extends StatelessWidget {
   final String image, title, size, price;
   final VoidCallback onEdit;
   const _ImageTile({
-    super.key,
     required this.image,
     required this.title,
     required this.size,

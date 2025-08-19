@@ -4,6 +4,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:photo_bug/app/models/chat_model/chat_models.dart';
+import 'package:photo_bug/app/routes/app_pages.dart';
+import 'package:photo_bug/main.dart';
 
 class ChatController extends GetxController {
   // Observable variables
@@ -53,7 +55,7 @@ class ChatController extends GetxController {
           id: '1',
           senderId: 'user1',
           senderName: 'Jonas',
-          senderImage: 'dummyImg2', // Replace with actual image URL
+          senderImage: dummyImg2, // Replace with actual image URL
           message:
               'Hello! are you available for a photoshoot for a wedding ceremony?',
           timestamp: DateTime.now().subtract(const Duration(hours: 2)),
@@ -63,8 +65,26 @@ class ChatController extends GetxController {
           id: '2',
           senderId: 'user2',
           senderName: 'Mark',
-          senderImage: 'dummyImg', // Replace with actual image URL
+          senderImage: dummyImg, // Replace with actual image URL
           message: 'Hello, Please share xyz details...',
+          timestamp: DateTime.now().subtract(const Duration(hours: 1)),
+          isMe: false,
+        ),
+        ChatMessage(
+          id: '3',
+          senderId: 'user3',
+          senderName: 'kazumi K',
+          senderImage: dummyImg2, // Replace with actual image URL
+          message: 'Hello, Please share xyz details...',
+          timestamp: DateTime.now().subtract(const Duration(hours: 1)),
+          isMe: false,
+        ),
+        ChatMessage(
+          id: '4',
+          senderId: 'user4',
+          senderName: 'Mark',
+          senderImage: dummyImg, // Replace with actual image URL
+          message: 'Hello, I am a project manager...',
           timestamp: DateTime.now().subtract(const Duration(hours: 1)),
           isMe: false,
         ),
@@ -92,8 +112,8 @@ class ChatController extends GetxController {
     final newMessage = ChatMessage(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       senderId: 'currentUserId', // Replace with actual current user ID
-      senderName: 'You',
-      senderImage: 'currentUserImage', // Replace with actual current user image
+      senderName: 'Mark',
+      senderImage: dummyImg, // Replace with actual current user image
       message: messageText,
       timestamp: DateTime.now(),
       isMe: true,
@@ -196,8 +216,8 @@ class ChatHeadController extends GetxController {
         ChatHead(
           id: '1',
           userId: 'user1',
-          name: 'Kazumi K',
-          image: 'dummyImg', // Replace with actual image URL
+          name: 'jonas',
+          image: dummyImg, // Replace with actual image URL
           lastMessage: 'Yes, that would be great!',
           lastMessageTime: DateTime.now().subtract(const Duration(hours: 1)),
           isOnline: true,
@@ -208,7 +228,7 @@ class ChatHeadController extends GetxController {
           id: '2',
           userId: 'user2',
           name: 'Angelina',
-          image: 'dummyImg', // Replace with actual image URL
+          image: dummyImg2, // Replace with actual image URL
           lastMessage: 'Can you send me over all the file types?',
           lastMessageTime: DateTime.now().subtract(const Duration(hours: 3)),
           isOnline: false,
@@ -218,12 +238,23 @@ class ChatHeadController extends GetxController {
         ChatHead(
           id: '3',
           userId: 'user3',
-          name: 'Kazumi K',
-          image: 'dummyImg', // Replace with actual image URL
+          name: 'Sazumi K',
+          image: dummyImg, // Replace with actual image URL
           lastMessage: 'Thanks for the quick response!',
           lastMessageTime: DateTime.now().subtract(const Duration(days: 1)),
           isOnline: false,
           hasNewMessage: false,
+          unreadCount: 0,
+        ),
+        ChatHead(
+          id: '4',
+          userId: 'user4',
+          name: 'Shabbir',
+          image: dummyImg2, // Replace with actual image URL
+          lastMessage: 'i am project manager , do you want to be ....',
+          lastMessageTime: DateTime.now().subtract(const Duration(hours: 3)),
+          isOnline: false,
+          hasNewMessage: true,
           unreadCount: 0,
         ),
       ];
@@ -257,7 +288,7 @@ class ChatHeadController extends GetxController {
 
     // Navigate to chat screen with arguments
     Get.toNamed(
-      '/chat',
+      Routes.CHAT_SCREEN,
       arguments: {
         'chatId': chatHead.id,
         'userName': chatHead.name,

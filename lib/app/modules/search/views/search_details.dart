@@ -137,7 +137,7 @@ class SearchDetails extends GetView<SearchDetailsController> {
             itemBorderColor: kInputBorderColor,
           ),
           MyText(
-            text: '${controller.recipientCount} Recipients',
+            text: '${5} Recipients',
             size: 12,
             color: kSecondaryColor,
             weight: FontWeight.w500,

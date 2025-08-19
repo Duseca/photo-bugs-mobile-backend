@@ -1,6 +1,8 @@
 import 'package:get/get.dart';
 import 'package:photo_bug/app/models/favourites_model/favourite_model.dart';
 import 'package:photo_bug/app/modules/image_detail/view/image_detail_view.dart';
+import 'package:photo_bug/app/routes/app_pages.dart';
+import 'package:photo_bug/main.dart';
 
 class FavouriteController extends GetxController {
   // Observable variables
@@ -27,13 +29,58 @@ class FavouriteController extends GetxController {
 
       // Sample data - replace with actual API data
       final sampleData = List.generate(12, (index) {
+        // Array of different image URLs
+        final imageUrls = [
+          dummyImg2,
+          'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?ixlib=rb-4.0.3&auto=format&fit=crop&w=764&q=80',
+          'https://images.unsplash.com/photo-1433086966358-54859d0ed716?ixlib=rb-4.0.3&auto=format&fit=crop&w=764&q=80',
+          'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?ixlib=rb-4.0.3&auto=format&fit=crop&w=764&q=80',
+          'https://images.unsplash.com/photo-1506197603052-3cc9c3a201bd?ixlib=rb-4.0.3&auto=format&fit=crop&w=764&q=80',
+          'https://images.unsplash.com/photo-1501594907352-04cda38ebc29?ixlib=rb-4.0.3&auto=format&fit=crop&w=764&q=80',
+          'https://images.unsplash.com/photo-1472214103451-9374bd1c798e?ixlib=rb-4.0.3&auto=format&fit=crop&w=764&q=80',
+          'https://images.unsplash.com/photo-1469474968028-56623f02e42e?ixlib=rb-4.0.3&auto=format&fit=crop&w=764&q=80',
+          'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?ixlib=rb-4.0.3&auto=format&fit=crop&w=764&q=80',
+          'https://images.unsplash.com/photo-1518837695005-2083093ee35b?ixlib=rb-4.0.3&auto=format&fit=crop&w=764&q=80',
+          'https://images.unsplash.com/photo-1511593358241-7eea1f3c84e5?ixlib=rb-4.0.3&auto=format&fit=crop&w=764&q=80',
+          'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?ixlib=rb-4.0.3&auto=format&fit=crop&w=764&q=80',
+        ];
+
+        final authorNames = [
+          'Adrian',
+          'Sarah',
+          'Michael',
+          'Emma',
+          'James',
+          'Sofia',
+          'David',
+          'Luna',
+          'Alex',
+          'Maya',
+          'Chris',
+          'Zara',
+        ];
+
+        final sizes = [
+          '40mb',
+          '35mb',
+          '50mb',
+          '28mb',
+          '42mb',
+          '38mb',
+          '45mb',
+          '32mb',
+          '48mb',
+          '36mb',
+          '44mb',
+          '39mb',
+        ];
+
         return FavoriteItem(
           id: 'fav_$index',
-          imageUrl:
-              'https://images.unsplash.com/photo-1534528741775-53994a69daeb?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=764&q=80', // Replace with actual image URL
-          authorName: 'Adrian',
-          authorImage: 'dummyImg', // Replace with actual author image URL
-          size: '40mb',
+          imageUrl: imageUrls[index], // Different URL for each image
+          authorName: authorNames[index], // Different author name
+          authorImage: dummyImg, // You can also make this different if needed
+          size: sizes[index], // Different file size
           price: 100.0 + (index * 10),
           isFavorite: true,
         );
@@ -118,8 +165,8 @@ class FavouriteController extends GetxController {
 
   // Navigate to image details
   void openImageDetails(FavoriteItem item) {
-    Get.to(
-      () => const ImageDetails(),
+    Get.toNamed(
+      Routes.IMAGE_DETAILS,
       arguments: {
         'itemId': item.id,
         'imageUrl': item.imageUrl,

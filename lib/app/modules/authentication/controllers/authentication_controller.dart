@@ -5,8 +5,7 @@ import 'package:photo_bug/app/modules/authentication/screens/forget_password.dar
 import 'package:photo_bug/app/modules/authentication/screens/interest_selection_screen.dart';
 import 'package:photo_bug/app/modules/authentication/screens/login_screen.dart';
 import 'package:photo_bug/app/modules/authentication/screens/otp_verification.dart';
-import 'package:photo_bug/app/modules/authentication/screens/signup_screen.dart';
-import 'package:photo_bug/app/modules/bottom_nav_bar/view/bottom_nav.dart';
+
 import 'package:photo_bug/app/routes/app_pages.dart';
 
 class AuthController extends GetxController {
