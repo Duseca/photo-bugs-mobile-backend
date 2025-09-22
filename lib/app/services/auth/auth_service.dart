@@ -1,71 +1,89 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:get/get.dart';
-import 'package:photo_bug/app/data/configs/api_configs.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:photo_bug/app/data/models/user_model.dart' as models;
 import 'package:photo_bug/app/data/models/api_response.dart';
-import 'package:photo_bug/app/data/models/auth_models.dart';
-import 'package:photo_bug/app/data/models/user_model.dart';
-
+import 'package:photo_bug/app/data/models/auth_models.dart' as auth_models;
+import 'package:photo_bug/app/data/configs/api_configs.dart';
 import '../app/app_service.dart';
 
 class AuthService extends GetxService {
+  static AuthService get instance => Get.find<AuthService>();
+
+  late final SharedPreferences _prefs;
   late final AppService _appService;
 
   // Storage keys
   static const String _tokenKey = 'auth_token';
   static const String _currentUserKey = 'current_user';
   static const String _refreshTokenKey = 'refresh_token';
+  static const String _onboardingKey = 'onboarding_completed';
+  static const String _firstTimeKey = 'first_time_user';
 
   // Reactive variables
-  final Rx<User?> _currentUser = Rx<User?>(null);
+  final Rx<models.User?> _currentUser = Rx<models.User?>(null);
   final Rx<String?> _authToken = Rx<String?>(null);
-  final RxBool _isLoading = false.obs;
+  final RxBool _isLoading = true.obs;
   final RxBool _isAuthenticated = false.obs;
+  final RxBool _isFirstTime = true.obs;
+  final RxBool _onboardingCompleted = false.obs;
 
   // Getters
-  User? get currentUser => _currentUser.value;
+  models.User? get currentUser => _currentUser.value;
   String? get authToken => _authToken.value;
   bool get isLoading => _isLoading.value;
   bool get isAuthenticated => _isAuthenticated.value;
   bool get isLoggedIn => isAuthenticated && currentUser != null;
+  bool get isFirstTime => _isFirstTime.value;
+  bool get onboardingCompleted => _onboardingCompleted.value;
+  bool get shouldShowOnboarding => isFirstTime && !onboardingCompleted;
 
   // Streams for reactive UI
-  Stream<User?> get userStream => _currentUser.stream;
+  Stream<models.User?> get userStream => _currentUser.stream;
   Stream<bool> get authStateStream => _isAuthenticated.stream;
 
+  // User role helpers
+  bool get isPhotographer => hasRole('photographer');
+  bool get isCreator => hasRole('creator');
+  bool get isAdmin => hasRole('admin');
+  bool get isEmailVerified => currentUser?.isEmailVerified ?? false;
+
   Future<AuthService> init() async {
-    await _init();
+    await _initialize();
     return this;
   }
 
-  @override
-  void onReady() {
-    super.onReady();
-    _checkAuthState();
-  }
+  /// Initialize the service
+  Future<void> _initialize() async {
+    try {
+      _prefs = await SharedPreferences.getInstance();
+      _appService = Get.find<AppService>();
 
-  Future<void> _init() async {
-    _appService = Get.find<AppService>();
-    await _loadStoredAuth();
+      await _loadStoredAuth();
+      await _loadOnboardingStatus();
+      await _checkInitialAuth();
+    } catch (e) {
+      print('AuthService initialization error: $e');
+    } finally {
+      _isLoading.value = false;
+    }
   }
 
   /// Load stored authentication data
   Future<void> _loadStoredAuth() async {
     try {
-      // Load auth token
       final token = _appService.sharedPreferences.getString(_tokenKey);
       if (token != null && token.isNotEmpty) {
         _authToken.value = token;
       }
 
-      // Load current user
       final userJson = _appService.sharedPreferences.getString(_currentUserKey);
       if (userJson != null && userJson.isNotEmpty) {
         final userMap = jsonDecode(userJson) as Map<String, dynamic>;
-        _currentUser.value = User.fromJson(userMap);
+        _currentUser.value = models.User.fromJson(userMap);
       }
 
-      // Update authentication state
       _updateAuthState();
     } catch (e) {
       print('Error loading stored auth: $e');
@@ -73,10 +91,15 @@ class AuthService extends GetxService {
     }
   }
 
-  /// Check authentication state
-  Future<void> _checkAuthState() async {
+  /// Load onboarding status from storage
+  Future<void> _loadOnboardingStatus() async {
+    _onboardingCompleted.value = _prefs.getBool(_onboardingKey) ?? false;
+    _isFirstTime.value = _prefs.getBool(_firstTimeKey) ?? true;
+  }
+
+  /// Check initial authentication state
+  Future<void> _checkInitialAuth() async {
     if (authToken != null && currentUser != null) {
-      // Validate token with server
       final isValid = await _validateToken();
       if (!isValid) {
         await logout();
@@ -84,14 +107,56 @@ class AuthService extends GetxService {
     }
   }
 
-  /// Update authentication state
-  void _updateAuthState() {
-    _isAuthenticated.value =
-        authToken != null && authToken!.isNotEmpty && currentUser != null;
+  // ==================== AUTHENTICATION FLOW ====================
+  // Flow: Send Email → Verify Email → Register → Login
+
+  /// Step 1: Send verification email
+  Future<ApiResponse<dynamic>> sendVerificationEmail(String email) async {
+    try {
+      _isLoading.value = true;
+
+      return await _makeApiRequest(
+        method: 'POST',
+        endpoint: ApiConfig.endpoints.sendEmail,
+        data: {'email': email},
+      );
+    } catch (e) {
+      return ApiResponse<dynamic>(
+        success: false,
+        error: 'Failed to send verification email: $e',
+      );
+    } finally {
+      _isLoading.value = false;
+    }
   }
 
-  /// Register new user
-  Future<ApiResponse<AuthResponse>> register(RegisterRequest request) async {
+  /// Step 2: Verify email with code (before registration)
+  Future<ApiResponse<dynamic>> verifyEmailCode(
+    String email,
+    String code,
+  ) async {
+    try {
+      _isLoading.value = true;
+
+      return await _makeApiRequest(
+        method: 'POST',
+        endpoint: ApiConfig.endpoints.verifyEmail,
+        data: {'email': email, 'code': code},
+      );
+    } catch (e) {
+      return ApiResponse<dynamic>(
+        success: false,
+        error: 'Email verification failed: $e',
+      );
+    } finally {
+      _isLoading.value = false;
+    }
+  }
+
+  /// Step 3: Register with full user data (after email verification)
+  Future<ApiResponse<auth_models.AuthResponse>> register(
+    auth_models.RegisterRequest request,
+  ) async {
     try {
       _isLoading.value = true;
 
@@ -106,7 +171,7 @@ class AuthService extends GetxService {
 
       return response;
     } catch (e) {
-      return ApiResponse<AuthResponse>(
+      return ApiResponse<auth_models.AuthResponse>(
         success: false,
         error: 'Registration failed: $e',
       );
@@ -115,8 +180,10 @@ class AuthService extends GetxService {
     }
   }
 
-  /// Login user
-  Future<ApiResponse<AuthResponse>> login(LoginRequest request) async {
+  /// Login with email and password
+  Future<ApiResponse<auth_models.AuthResponse>> login(
+    auth_models.LoginRequest request,
+  ) async {
     try {
       _isLoading.value = true;
 
@@ -131,7 +198,7 @@ class AuthService extends GetxService {
 
       return response;
     } catch (e) {
-      return ApiResponse<AuthResponse>(
+      return ApiResponse<auth_models.AuthResponse>(
         success: false,
         error: 'Login failed: $e',
       );
@@ -140,34 +207,15 @@ class AuthService extends GetxService {
     }
   }
 
-  /// Verify email
-  Future<ApiResponse<AuthResponse>> verifyEmail(
-    EmailVerificationRequest request,
-  ) async {
-    try {
-      _isLoading.value = true;
+  // ==================== USER PROFILE ====================
 
-      return await _makeAuthRequest(
-        endpoint: ApiConfig.endpoints.verifyEmail,
-        data: request.toJson(),
-      );
-    } catch (e) {
-      return ApiResponse<AuthResponse>(
-        success: false,
-        error: 'Email verification failed: $e',
-      );
-    } finally {
-      _isLoading.value = false;
-    }
-  }
-
-  /// Get current user from server
-  Future<ApiResponse<User>> getCurrentUser() async {
+  /// Get current user from API server
+  Future<ApiResponse<models.User>> getCurrentUser() async {
     try {
-      final response = await _makeApiRequest<User>(
+      final response = await _makeApiRequest<models.User>(
         method: 'GET',
         endpoint: ApiConfig.endpoints.currentUser,
-        fromJson: (json) => User.fromJson(json),
+        fromJson: (json) => models.User.fromJson(json),
       );
 
       if (response.success && response.data != null) {
@@ -176,7 +224,7 @@ class AuthService extends GetxService {
 
       return response;
     } catch (e) {
-      return ApiResponse<User>(
+      return ApiResponse<models.User>(
         success: false,
         error: 'Failed to get current user: $e',
       );
@@ -184,16 +232,23 @@ class AuthService extends GetxService {
   }
 
   /// Update user profile
-  Future<ApiResponse<User>> updateUser(Map<String, dynamic> userData) async {
+  // In AuthService.updateUser()
+  Future<ApiResponse<models.User>> updateUser(
+    Map<String, dynamic> userData,
+  ) async {
+    print('Updating user with data: $userData');
     try {
       _isLoading.value = true;
 
-      final response = await _makeApiRequest<User>(
+      final response = await _makeApiRequest<models.User>(
         method: 'PUT',
         endpoint: ApiConfig.endpoints.updateUser,
         data: userData,
-        fromJson: (json) => User.fromJson(json),
+        fromJson: (json) => models.User.fromJson(json),
       );
+
+      print('API Response: ${response.success}');
+      print('Response data: ${response.data?.toJson()}'); // ← Add this
 
       if (response.success && response.data != null) {
         await _saveUser(response.data!);
@@ -201,7 +256,8 @@ class AuthService extends GetxService {
 
       return response;
     } catch (e) {
-      return ApiResponse<User>(
+      print('Error updating user: $e');
+      return ApiResponse<models.User>(
         success: false,
         error: 'Failed to update user: $e',
       );
@@ -212,7 +268,7 @@ class AuthService extends GetxService {
 
   /// Update password
   Future<ApiResponse<dynamic>> updatePassword(
-    UpdatePasswordRequest request,
+    auth_models.UpdatePasswordRequest request,
   ) async {
     try {
       _isLoading.value = true;
@@ -232,16 +288,18 @@ class AuthService extends GetxService {
     }
   }
 
+  // ==================== STORAGE & FAVORITES ====================
+
   /// Get storage info
-  Future<ApiResponse<StorageInfo>> getStorageInfo() async {
+  Future<ApiResponse<auth_models.StorageInfo>> getStorageInfo() async {
     try {
-      return await _makeApiRequest<StorageInfo>(
+      return await _makeApiRequest<auth_models.StorageInfo>(
         method: 'GET',
         endpoint: ApiConfig.endpoints.userStorage,
-        fromJson: (json) => StorageInfo.fromJson(json),
+        fromJson: (json) => auth_models.StorageInfo.fromJson(json),
       );
     } catch (e) {
-      return ApiResponse<StorageInfo>(
+      return ApiResponse<auth_models.StorageInfo>(
         success: false,
         error: 'Failed to get storage info: $e',
       );
@@ -250,7 +308,7 @@ class AuthService extends GetxService {
 
   /// Purchase storage
   Future<ApiResponse<dynamic>> purchaseStorage(
-    PurchaseStorageRequest request,
+    auth_models.PurchaseStorageRequest request,
   ) async {
     try {
       return await _makeApiRequest(
@@ -296,19 +354,40 @@ class AuthService extends GetxService {
     }
   }
 
+  // ==================== ONBOARDING ====================
+
+  /// Complete onboarding
+  Future<void> completeOnboarding() async {
+    await _prefs.setBool(_onboardingKey, true);
+    await _prefs.setBool(_firstTimeKey, false);
+    _onboardingCompleted.value = true;
+    _isFirstTime.value = false;
+  }
+
+  /// Reset onboarding (for testing)
+  Future<void> resetOnboarding() async {
+    await _prefs.remove(_onboardingKey);
+    await _prefs.remove(_firstTimeKey);
+    _onboardingCompleted.value = false;
+    _isFirstTime.value = true;
+  }
+
+  // ==================== LOGOUT ====================
+
   /// Logout user
   Future<void> logout() async {
     try {
       _isLoading.value = true;
 
-      // Call logout endpoint if available
-      // await _makeApiRequest(method: 'POST', endpoint: '/logout');
+      // Call API logout endpoint if available
+      try {
+        await _makeApiRequest(method: 'POST', endpoint: '/api/auth/logout');
+      } catch (e) {
+        print('API logout error (non-critical): $e');
+      }
 
       await cleanStorage();
       _resetAuthState();
-
-      // Navigate to login screen
-      Get.offAllNamed('/login');
     } catch (e) {
       print('Error during logout: $e');
     } finally {
@@ -332,8 +411,16 @@ class AuthService extends GetxService {
     _isAuthenticated.value = false;
   }
 
+  // ==================== HELPER METHODS ====================
+
+  /// Update authentication state
+  void _updateAuthState() {
+    _isAuthenticated.value =
+        authToken != null && authToken!.isNotEmpty && currentUser != null;
+  }
+
   /// Handle successful authentication
-  Future<void> _handleAuthSuccess(AuthResponse authResponse) async {
+  Future<void> _handleAuthSuccess(auth_models.AuthResponse authResponse) async {
     if (authResponse.token != null) {
       await _saveToken(authResponse.token!);
     }
@@ -352,13 +439,29 @@ class AuthService extends GetxService {
   }
 
   /// Save user data
-  Future<void> _saveUser(User user) async {
+  Future<void> _saveUser(models.User user) async {
+    print('AuthService: Saving user: ${user.toJson()}');
+
+    // IMPORTANT: Force the reactive update by setting to null first
+    // This ensures the stream listeners are triggered
+    _currentUser.value = null;
+
+    // Small delay to ensure the null value is processed
+    await Future.delayed(Duration.zero);
+
+    // Now set the actual user data
     _currentUser.value = user;
+
+    // Save to SharedPreferences
     final userJson = jsonEncode(user.toJson());
     await _appService.sharedPreferences.setString(_currentUserKey, userJson);
+
+    print(
+      'AuthService: User saved and stream updated with: ${_currentUser.value?.name}',
+    );
   }
 
-  /// Validate token with server
+  /// Validate token with API server
   Future<bool> _validateToken() async {
     if (authToken == null) return false;
 
@@ -371,15 +474,15 @@ class AuthService extends GetxService {
   }
 
   /// Make authentication request
-  Future<ApiResponse<AuthResponse>> _makeAuthRequest({
+  Future<ApiResponse<auth_models.AuthResponse>> _makeAuthRequest({
     required String endpoint,
     required Map<String, dynamic> data,
   }) async {
-    return await _makeApiRequest<AuthResponse>(
+    return await _makeApiRequest<auth_models.AuthResponse>(
       method: 'POST',
       endpoint: endpoint,
       data: data,
-      fromJson: (json) => AuthResponse.fromJson(json),
+      fromJson: (json) => auth_models.AuthResponse.fromJson(json),
     );
   }
 
@@ -432,11 +535,6 @@ class AuthService extends GetxService {
     try {
       final statusCode = response.statusCode ?? 0;
 
-      // Log response in development
-      if (EnvironmentConfig.isDevelopment) {
-        print('API Response [$statusCode]: ${response.bodyString}');
-      }
-
       // Handle successful responses
       if (statusCode >= 200 && statusCode < 300) {
         final responseData = response.body;
@@ -482,11 +580,6 @@ class AuthService extends GetxService {
       errorMessage = 'Network error: $error';
     }
 
-    // Log error in development
-    if (EnvironmentConfig.isDevelopment) {
-      print('API Error: $errorMessage');
-    }
-
     return ApiResponse<T>(success: false, error: errorMessage);
   }
 
@@ -501,10 +594,4 @@ class AuthService extends GetxService {
   bool hasRole(String role) {
     return currentUser?.role == role;
   }
-
-  /// Check if user is photographer
-  bool get isPhotographer => hasRole('photographer');
-
-  /// Check if user is admin
-  bool get isAdmin => hasRole('admin');
 }

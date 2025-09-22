@@ -5,10 +5,14 @@ import 'package:photo_bug/app/modules/authentication/screens/forget_password.dar
 import 'package:photo_bug/app/modules/authentication/screens/interest_selection_screen.dart';
 import 'package:photo_bug/app/modules/authentication/screens/login_screen.dart';
 import 'package:photo_bug/app/modules/authentication/screens/otp_verification.dart';
-
 import 'package:photo_bug/app/routes/app_pages.dart';
+import 'package:photo_bug/app/services/auth/auth_service.dart';
+import 'package:photo_bug/app/data/models/auth_models.dart' as auth_models;
 
 class AuthController extends GetxController {
+  // Get AuthService instance
+  final AuthService _authService = AuthService.instance;
+
   // Observable variables
   final isLoading = false.obs;
   final rememberMe = false.obs;
@@ -17,6 +21,10 @@ class AuthController extends GetxController {
   final selectedDateOfBirth = Rxn<DateTime>();
   final selectedInterests = <String>[].obs;
 
+  // Email verification state
+  final verificationEmail = ''.obs;
+  final isEmailVerified = false.obs;
+
   // Text editing controllers
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
@@ -24,6 +32,7 @@ class AuthController extends GetxController {
   final lastNameController = TextEditingController();
   final confirmPasswordController = TextEditingController();
   final usernameController = TextEditingController();
+  final phoneController = TextEditingController();
   final cityController = TextEditingController();
   final stateController = TextEditingController();
   final countryController = TextEditingController();
@@ -43,6 +52,7 @@ class AuthController extends GetxController {
   // Form validation
   final loginFormKey = GlobalKey<FormState>();
   final signUpFormKey = GlobalKey<FormState>();
+  final emailVerificationFormKey = GlobalKey<FormState>();
   final completeProfileFormKey = GlobalKey<FormState>();
   final forgotPasswordFormKey = GlobalKey<FormState>();
 
@@ -67,25 +77,23 @@ class AuthController extends GetxController {
   void onInit() {
     super.onInit();
     startOTPTimer();
+    _listenToAuthState();
   }
 
   @override
   void onClose() {
-    // Dispose controllers
-    emailController.dispose();
-    passwordController.dispose();
-    firstNameController.dispose();
-    lastNameController.dispose();
-    confirmPasswordController.dispose();
-    usernameController.dispose();
-    cityController.dispose();
-    stateController.dispose();
-    countryController.dispose();
-    addressController.dispose();
-    bioController.dispose();
-    otpController.dispose();
-    forgotPasswordEmailController.dispose();
+    // Don't dispose controllers here since we want them to persist
     super.onClose();
+  }
+
+  /// Listen to AuthService state changes
+  void _listenToAuthState() {
+    _authService.authStateStream.listen((bool authenticated) {
+      if (authenticated) {
+        // User successfully authenticated, navigate to home
+        Get.offAllNamed(Routes.BOTTOM_NAV_BAR);
+      }
+    });
   }
 
   // Toggle functions
@@ -142,6 +150,16 @@ class AuthController extends GetxController {
     return null;
   }
 
+  String? validatePhone(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Phone number is required';
+    }
+    if (value.length < 10) {
+      return 'Please enter a valid phone number';
+    }
+    return null;
+  }
+
   // Interest management
   void toggleInterest(String interest) {
     if (selectedInterests.contains(interest)) {
@@ -182,118 +200,187 @@ class AuthController extends GetxController {
     });
   }
 
-  void resendOTP() {
-    if (canResendOTP.value) {
-      startOTPTimer();
-      Get.snackbar(
-        'OTP Sent',
-        'A new OTP has been sent to your email',
-        snackPosition: SnackPosition.TOP,
-        backgroundColor: Colors.green,
-        colorText: Colors.white,
+  // ==================== NEW AUTHENTICATION FLOW ====================
+
+  /// Step 1: Validate signup form and send verification email
+  Future<void> initiateSignup() async {
+    if (!signUpFormKey.currentState!.validate()) return;
+    if (!agreeToTerms.value) {
+      _showErrorSnackbar('Please agree to the Terms and Conditions');
+      return;
+    }
+
+    try {
+      isLoading.value = true;
+
+      // Store the email for verification
+      verificationEmail.value = emailController.text.trim();
+
+      final response = await _authService.sendVerificationEmail(
+        emailController.text.trim(),
       );
+
+      if (response.success) {
+        _showSuccessSnackbar('Verification code sent to your email!');
+        // Navigate to OTP verification screen
+        Get.to(() => const OtpVerification());
+        startOTPTimer();
+      } else {
+        _showErrorSnackbar(
+          response.error ?? 'Failed to send verification email',
+        );
+      }
+    } catch (e) {
+      _showErrorSnackbar('An error occurred. Please try again.');
+    } finally {
+      isLoading.value = false;
     }
   }
 
-  // Auth methods
+  /// Step 2: Verify email with OTP code
+  Future<void> verifyEmailCode() async {
+    if (otpController.text.length != 6) {
+      _showErrorSnackbar('Please enter a valid 6-digit OTP');
+      return;
+    }
+
+    try {
+      isLoading.value = true;
+
+      final response = await _authService.verifyEmailCode(
+        verificationEmail.value,
+        otpController.text,
+      );
+
+      if (response.success) {
+        isEmailVerified.value = true;
+        _showSuccessSnackbar('Email verified successfully!');
+        // Don't navigate here - let the calling method handle navigation
+      } else {
+        _showErrorSnackbar(response.error ?? 'Email verification failed');
+      }
+    } catch (e) {
+      _showErrorSnackbar('Verification failed. Please try again.');
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  /// Step 3: Complete registration (called after email verification)
+  Future<void> completeRegistration() async {
+    try {
+      isLoading.value = true;
+
+      final request = auth_models.RegisterRequest(
+        name:
+            '${firstNameController.text.trim()} ${lastNameController.text.trim()}',
+        userName: _generateUsername(), // Generate a temporary username
+        email: verificationEmail.value, // Use verified email
+        password: passwordController.text,
+        phone: '12344432', // Will be filled in profile completion
+        profilePicture:
+            'https:/jhhdhdhdh', // Set default or allow user to upload
+        deviceToken: '', // Set from device
+        stripeAccountId: '', // Set later if needed
+        role: 'creator', // Default role
+        gender: 'male', // Default, will be updated in profile completion
+        dob: DateTime.now().subtract(
+          Duration(days: 365 * 18),
+        ), // Default 18 years old
+        address: {'country': '', 'town': '', 'address': ''},
+        location: {
+          'coordinates': [0.0, 0.0],
+        }, // Set from location service
+        bio: '',
+        interests: [],
+        settings: {
+          'general': true,
+          'sound': true,
+          'vibrate': true,
+          'updated': true,
+        },
+        favourites: [],
+        storagePurchases: [],
+      );
+
+      final response = await _authService.register(request);
+
+      if (response.success) {
+        _showSuccessSnackbar('Registration successful!');
+        // Navigate to complete profile screen
+        Get.offAll(() => const CompleteProfile());
+      } else {
+        _showErrorSnackbar(response.error ?? 'Registration failed');
+      }
+    } catch (e) {
+      _showErrorSnackbar('Registration failed. Please try again.');
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  // Helper method to generate temporary username
+  String _generateUsername() {
+    String firstName = firstNameController.text.trim().toLowerCase();
+    String lastName = lastNameController.text.trim().toLowerCase();
+    String timestamp = DateTime.now().millisecondsSinceEpoch
+        .toString()
+        .substring(8);
+    return '${firstName}_${lastName}_$timestamp';
+  }
+
+  /// Login with email and password
   Future<void> login() async {
     if (!loginFormKey.currentState!.validate()) return;
 
     try {
       isLoading.value = true;
 
-      // Simulate API call
-      await Future.delayed(const Duration(seconds: 2));
-
-      // Navigate to home
-      Get.toNamed(Routes.BOTTOM_NAV_BAR);
-
-      Get.snackbar(
-        'Success',
-        'Login successful!',
-        snackPosition: SnackPosition.TOP,
-        backgroundColor: Colors.green,
-        colorText: Colors.white,
+      final request = auth_models.LoginRequest(
+        email: emailController.text.trim(),
+        password: passwordController.text,
       );
+
+      final response = await _authService.login(request);
+
+      if (response.success) {
+        _showSuccessSnackbar('Login successful!');
+        // Navigation will be handled by auth state listener
+      } else {
+        _showErrorSnackbar(response.error ?? 'Login failed');
+      }
     } catch (e) {
-      Get.snackbar(
-        'Error',
-        'Login failed. Please try again.',
-        snackPosition: SnackPosition.TOP,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      _showErrorSnackbar('Login failed. Please try again.');
     } finally {
       isLoading.value = false;
     }
   }
 
-  Future<void> signUp() async {
-    if (!signUpFormKey.currentState!.validate()) return;
-    if (!agreeToTerms.value) {
-      Get.snackbar(
-        'Error',
-        'Please agree to the Terms and Conditions',
-        snackPosition: SnackPosition.TOP,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
-      return;
-    }
+  /// Resend verification email
+  Future<void> resendVerificationEmail() async {
+    if (!canResendOTP.value) return;
 
     try {
       isLoading.value = true;
 
-      // Simulate API call
-      await Future.delayed(const Duration(seconds: 2));
-
-      // Navigate to OTP verification
-      Get.to(() => const OtpVerification());
-    } catch (e) {
-      Get.snackbar(
-        'Error',
-        'Registration failed. Please try again.',
-        snackPosition: SnackPosition.TOP,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
+      final response = await _authService.sendVerificationEmail(
+        verificationEmail.value,
       );
+
+      if (response.success) {
+        _showSuccessSnackbar('New verification code sent!');
+        startOTPTimer();
+      } else {
+        _showErrorSnackbar(response.error ?? 'Failed to resend code');
+      }
+    } catch (e) {
+      _showErrorSnackbar('Failed to resend code. Please try again.');
     } finally {
       isLoading.value = false;
     }
   }
 
-  Future<void> verifyOTP() async {
-    if (otpController.text.length != 6) {
-      Get.snackbar(
-        'Error',
-        'Please enter a valid 6-digit OTP',
-        snackPosition: SnackPosition.TOP,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
-      return;
-    }
-
-    try {
-      isLoading.value = true;
-
-      // Simulate API call
-      await Future.delayed(const Duration(seconds: 2));
-
-      // Navigate to complete profile
-      Get.offAll(() => const CompleteProfile());
-    } catch (e) {
-      Get.snackbar(
-        'Error',
-        'OTP verification failed. Please try again.',
-        snackPosition: SnackPosition.TOP,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
-    } finally {
-      isLoading.value = false;
-    }
-  }
+  // ==================== PROFILE COMPLETION ====================
 
   Future<void> completeProfile() async {
     if (!completeProfileFormKey.currentState!.validate()) return;
@@ -301,19 +388,32 @@ class AuthController extends GetxController {
     try {
       isLoading.value = true;
 
-      // Simulate API call
-      await Future.delayed(const Duration(seconds: 2));
+      final userData = {
+        'name':
+            '${firstNameController.text.trim()} ${lastNameController.text.trim()}',
+        'user_name': usernameController.text.trim(),
+        'phone': phoneController.text.trim(),
+        'gender': selectedGender.value?.toLowerCase(),
+        'dob': selectedDateOfBirth.value?.toIso8601String(),
+        'address': {
+          'country': countryController.text.trim(),
+          'town': cityController.text.trim(),
+          'address': addressController.text.trim(),
+        },
+        'bio': bioController.text.trim(),
+      };
 
-      // Navigate to select interests
-      Get.to(() => SelectInterest());
+      final response = await _authService.updateUser(userData);
+
+      if (response.success) {
+        _showSuccessSnackbar('Profile updated successfully!');
+        // Navigate to select interests
+        Get.to(() => SelectInterest());
+      } else {
+        _showErrorSnackbar(response.error ?? 'Profile update failed');
+      }
     } catch (e) {
-      Get.snackbar(
-        'Error',
-        'Profile completion failed. Please try again.',
-        snackPosition: SnackPosition.TOP,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      _showErrorSnackbar('Profile completion failed. Please try again.');
     } finally {
       isLoading.value = false;
     }
@@ -323,23 +423,105 @@ class AuthController extends GetxController {
     try {
       isLoading.value = true;
 
-      // Simulate API call
-      await Future.delayed(const Duration(seconds: 2));
+      final interestData = {'interests': selectedInterests.toList()};
 
-      // Navigate to home
-      Get.toNamed(Routes.BOTTOM_NAV_BAR);
+      final response = await _authService.updateUser(interestData);
+
+      if (response.success) {
+        _showSuccessSnackbar('Registration completed successfully!');
+        // Navigate to home
+        Get.offAllNamed(Routes.BOTTOM_NAV_BAR);
+      } else {
+        _showErrorSnackbar(response.error ?? 'Failed to save interests');
+      }
     } catch (e) {
-      Get.snackbar(
-        'Error',
-        'Registration completion failed. Please try again.',
-        snackPosition: SnackPosition.TOP,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      _showErrorSnackbar('Registration completion failed. Please try again.');
     } finally {
       isLoading.value = false;
     }
   }
+
+  // ==================== LOGOUT - FIXED VERSION ====================
+
+  /// Logout user and clear all data
+  Future<void> logout() async {
+    try {
+      isLoading.value = true;
+
+      // Call the AuthService logout method
+      await _authService.logout();
+
+      // Clear form data but keep controllers alive
+      _clearAllData();
+
+      // Show success message
+      _showSuccessSnackbar('Logged out successfully');
+
+      // Navigate to login screen
+      Get.offAllNamed(Routes.LOGIN);
+    } catch (e) {
+      _showErrorSnackbar('Logout failed. Please try again.');
+      print('Logout error: $e');
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  /// Clear all form data and reset state (FIXED VERSION)
+  void _clearAllData() {
+    // Clear all text controllers
+    emailController.clear();
+    passwordController.clear();
+    firstNameController.clear();
+    lastNameController.clear();
+    confirmPasswordController.clear();
+    usernameController.clear();
+    phoneController.clear();
+    cityController.clear();
+    stateController.clear();
+    countryController.clear();
+    addressController.clear();
+    bioController.clear();
+    otpController.clear();
+    forgotPasswordEmailController.clear();
+
+    // Reset all observable variables
+    rememberMe.value = false;
+    agreeToTerms.value = false;
+    selectedGender.value = null;
+    selectedDateOfBirth.value = null;
+    selectedInterests.clear();
+    verificationEmail.value = '';
+    isEmailVerified.value = false;
+    isPasswordVisible.value = false;
+    isConfirmPasswordVisible.value = false;
+
+    // Reset OTP timer
+    otpTimer.value = 58;
+    canResendOTP.value = false;
+  }
+
+  /// Show logout confirmation dialog
+  void showLogoutDialog() {
+    Get.dialog(
+      AlertDialog(
+        title: Text('Logout'),
+        content: Text('Are you sure you want to logout?'),
+        actions: [
+          TextButton(onPressed: () => Get.back(), child: Text('Cancel')),
+          TextButton(
+            onPressed: () {
+              Get.back(); // Close dialog
+              logout(); // Perform logout
+            },
+            child: Text('Logout', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==================== FORGOT PASSWORD ====================
 
   Future<void> forgotPassword() async {
     if (!forgotPasswordFormKey.currentState!.validate()) return;
@@ -347,97 +529,56 @@ class AuthController extends GetxController {
     try {
       isLoading.value = true;
 
-      // Simulate API call
-      await Future.delayed(const Duration(seconds: 2));
-
-      // Show success dialog and navigate back to login
-      Get.back(); // Close dialog
-      Get.off(() => const Login());
-    } catch (e) {
-      Get.snackbar(
-        'Error',
-        'Failed to send reset link. Please try again.',
-        snackPosition: SnackPosition.TOP,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
+      // Send verification email for password reset
+      final response = await _authService.sendVerificationEmail(
+        forgotPasswordEmailController.text.trim(),
       );
+
+      if (response.success) {
+        _showSuccessSnackbar('Password reset code sent to your email');
+        // You can navigate to OTP verification for password reset
+        Get.back(); // Close dialog
+      } else {
+        _showErrorSnackbar(response.error ?? 'Failed to send reset code');
+      }
+    } catch (e) {
+      _showErrorSnackbar('Failed to send reset code. Please try again.');
     } finally {
       isLoading.value = false;
     }
   }
 
-  // Social login methods
-  Future<void> loginWithGoogle() async {
-    try {
-      isLoading.value = true;
+  // ==================== HELPER METHODS ====================
 
-      // Simulate Google login
-      await Future.delayed(const Duration(seconds: 2));
-
-      Get.toNamed(Routes.BOTTOM_NAV_BAR);
-    } catch (e) {
-      Get.snackbar(
-        'Error',
-        'Google login failed. Please try again.',
-        snackPosition: SnackPosition.TOP,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
-    } finally {
-      isLoading.value = false;
-    }
+  void _showSuccessSnackbar(String message) {
+    Get.snackbar(
+      'Success',
+      message,
+      snackPosition: SnackPosition.TOP,
+      backgroundColor: Colors.green,
+      colorText: Colors.white,
+    );
   }
 
-  Future<void> loginWithApple() async {
-    try {
-      isLoading.value = true;
-
-      // Simulate Apple login
-      await Future.delayed(const Duration(seconds: 2));
-
-      Get.toNamed(Routes.BOTTOM_NAV_BAR);
-    } catch (e) {
-      Get.snackbar(
-        'Error',
-        'Apple login failed. Please try again.',
-        snackPosition: SnackPosition.TOP,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
-    } finally {
-      isLoading.value = false;
-    }
-  }
-
-  Future<void> loginWithFacebook() async {
-    try {
-      isLoading.value = true;
-
-      // Simulate Facebook login
-      await Future.delayed(const Duration(seconds: 2));
-
-      Get.toNamed(Routes.BOTTOM_NAV_BAR);
-    } catch (e) {
-      Get.snackbar(
-        'Error',
-        'Facebook login failed. Please try again.',
-        snackPosition: SnackPosition.TOP,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
-    } finally {
-      isLoading.value = false;
-    }
+  void _showErrorSnackbar(String message) {
+    Get.snackbar(
+      'Error',
+      message,
+      snackPosition: SnackPosition.TOP,
+      backgroundColor: Colors.red,
+      colorText: Colors.white,
+    );
   }
 
   // Navigation methods
   void goToSignUp() => Get.toNamed(Routes.SIGN_UP);
   void goToLogin() => Get.toNamed(Routes.LOGIN);
+  void goToEmailVerification() => Get.to(() => const OtpVerification());
   void goToForgotPassword() => Get.to(() => const ForgetPassword());
   void goBack() => Get.back();
   void skipStep() => Get.toNamed(Routes.BOTTOM_NAV_BAR);
 
-  // Clear form data
+  // Individual clear methods (kept for specific use cases)
   void clearLoginForm() {
     emailController.clear();
     passwordController.clear();
@@ -450,6 +591,8 @@ class AuthController extends GetxController {
     emailController.clear();
     passwordController.clear();
     confirmPasswordController.clear();
+    usernameController.clear();
+    phoneController.clear();
     agreeToTerms.value = false;
   }
 
@@ -458,9 +601,25 @@ class AuthController extends GetxController {
     selectedGender.value = null;
     selectedDateOfBirth.value = null;
     cityController.clear();
+    phoneController.clear();
     stateController.clear();
     countryController.clear();
     addressController.clear();
     bioController.clear();
+  }
+
+  void clearEmailVerification() {
+    otpController.clear();
+    verificationEmail.value = '';
+    isEmailVerified.value = false;
+  }
+
+  // Reset authentication state (kept for compatibility but not used in logout)
+  void resetAuthState() {
+    clearLoginForm();
+    clearSignUpForm();
+    clearCompleteProfileForm();
+    clearEmailVerification();
+    selectedInterests.clear();
   }
 }

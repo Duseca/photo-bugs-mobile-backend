@@ -1,4 +1,5 @@
 import 'package:get/get.dart';
+import 'package:photo_bug/app/middleware/auth_middleware.dart';
 import 'package:photo_bug/app/modules/add_new_listing/binding/add_listing_binding.dart';
 import 'package:photo_bug/app/modules/add_new_listing/view/add_new_listing.dart';
 import 'package:photo_bug/app/modules/authentication/screens/complete_profile_screen.dart';
@@ -31,6 +32,7 @@ import 'package:photo_bug/app/modules/listing/views/listing_details.dart';
 import 'package:photo_bug/app/modules/search/binding/search_bindings.dart';
 import 'package:photo_bug/app/modules/search/views/search_details.dart';
 import 'package:photo_bug/app/modules/search/views/search_screen.dart';
+import 'package:photo_bug/app/modules/settings/profile/bindings/profile_binding.dart';
 import 'package:photo_bug/app/modules/settings/profile/profile.dart';
 import 'package:photo_bug/app/modules/storage/bindings/storage_binding.dart';
 import 'package:photo_bug/app/modules/storage/views/buy_storage.dart';
@@ -63,6 +65,9 @@ class AppPages {
       binding: WelcomeBinding(),
       transition: Transition.fadeIn,
       transitionDuration: const Duration(milliseconds: 500),
+      middlewares: [
+        AppMiddleware(),
+      ], // Ensure this is the first route to handle onboarding
     ),
     GetPage(
       name: _Paths.ONBOARDING,
@@ -73,16 +78,19 @@ class AppPages {
       name: _Paths.AUTHENTICATION,
       page: () => const AuthenticationView(),
       binding: AuthenticationBinding(),
+      middlewares: [AppMiddleware()],
     ),
     GetPage(
       name: _Paths.LOGIN,
       page: () => const Login(),
       binding: AuthenticationBinding(),
+      middlewares: [AppMiddleware()],
     ),
     GetPage(
       name: _Paths.SIGN_UP,
       page: () => const SignUp(),
       binding: AuthenticationBinding(),
+      middlewares: [AppMiddleware()],
     ),
     GetPage(
       name: _Paths.COMPLETE_PROFILE,
@@ -93,6 +101,7 @@ class AppPages {
       name: _Paths.BOTTOM_NAV_BAR,
       page: () => BottomNavBar(),
       binding: BottomNavBinding(),
+      middlewares: [AppMiddleware()],
     ),
     GetPage(
       name: _Paths.HOME,
@@ -188,8 +197,8 @@ class AppPages {
     ),
     GetPage(
       name: _Paths.PROFILE,
-      page: () => const Profile(), // Your existing Profile widget
-      // Your existing binding
+      page: () => const Profile(),
+      binding: ProfileBinding(),
     ),
   ];
 }

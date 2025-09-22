@@ -9,9 +9,7 @@ import 'package:photo_bug/app/core/common_widget/heading_widget.dart';
 import 'package:photo_bug/app/core/common_widget/my_button_widget.dart';
 import 'package:photo_bug/app/core/common_widget/my_text_widget.dart';
 import 'package:photo_bug/app/core/common_widget/simple_app_bar_widget.dart';
-
 import 'package:pinput/pinput.dart';
-
 
 class OtpVerification extends StatelessWidget {
   const OtpVerification({super.key});
@@ -21,9 +19,7 @@ class OtpVerification extends StatelessWidget {
     final AuthController authController = Get.find<AuthController>();
 
     return Scaffold(
-      appBar: authAppBar(
-        title: 'Account Verification',
-      ),
+      appBar: authAppBar(title: 'Account Verification'),
       body: ListView(
         padding: AppSizes.DEFAULT,
         children: [
@@ -32,7 +28,7 @@ class OtpVerification extends StatelessWidget {
             subTitle:
                 'Enter the One-Time Password (OTP) sent to your email to verify your account.',
           ),
-          
+
           // OTP Input
           Pinput(
             controller: authController.otpController,
@@ -46,64 +42,76 @@ class OtpVerification extends StatelessWidget {
             onCompleted: (pin) {
               // Auto verify when OTP is complete
               if (pin.length == 6) {
-                authController.verifyOTP();
+                authController.verifyEmailCode();
               }
             },
           ),
-          
+
           const SizedBox(height: 24),
-          
+
           // Timer and Resend
-          Obx(() => Wrap(
-            alignment: WrapAlignment.center,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              if (!authController.canResendOTP.value) ...[
-                MyText(
-                  text: '00:${authController.otpTimer.value.toString().padLeft(2, '0')} ',
-                  size: 12,
-                  color: kQuaternaryColor,
+          Obx(
+            () => Wrap(
+              alignment: WrapAlignment.center,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                if (!authController.canResendOTP.value) ...[
+                  MyText(
+                    text:
+                        '00:${authController.otpTimer.value.toString().padLeft(2, '0')} ',
+                    size: 12,
+                    color: kQuaternaryColor,
+                  ),
+                ],
+                GestureDetector(
+                  onTap:
+                      authController.canResendOTP.value
+                          ? authController.resendVerificationEmail
+                          : null,
+                  child: MyText(
+                    text: 'Resend',
+                    size: 12,
+                    color:
+                        authController.canResendOTP.value
+                            ? kSecondaryColor
+                            : kQuaternaryColor,
+                    weight: FontWeight.w600,
+                  ),
                 ),
               ],
-              GestureDetector(
-                onTap: authController.canResendOTP.value 
-                    ? authController.resendOTP 
-                    : null,
-                child: MyText(
-                  text: 'Resend',
-                  size: 12,
-                  color: authController.canResendOTP.value 
-                      ? kSecondaryColor 
-                      : kQuaternaryColor,
-                  weight: FontWeight.w600,
-                ),
-              ),
-            ],
-          )),
-          
+            ),
+          ),
+
           const SizedBox(height: 24),
-          
+
           // Confirm Button
-          Obx(() => MyButton(
-            buttonText: 'Confirm',
-            isLoading: authController.isLoading.value,
-            onTap: () {
-              authController.verifyOTP();
-              
-              // Show success dialog
-              Get.dialog(
-                CongratsDialog(
-                  title: 'Verification Complete!',
-                  congratsText: 'Your account has been successfully verified.',
-                  btnText: 'Continue',
-                  onTap: () {
-                    Get.back(); // Close dialog
-                    authController.completeProfile();
-                  },
-                ),
-              );
-            },
-          )),
+          Obx(
+            () => MyButton(
+              buttonText: 'Confirm',
+              isLoading: authController.isLoading.value,
+              onTap: () async {
+                if (authController.otpController.text.length != 6) {
+                  Get.snackbar(
+                    'Error',
+                    'Please enter a valid 6-digit OTP',
+                    snackPosition: SnackPosition.TOP,
+                    backgroundColor: Colors.red,
+                    colorText: Colors.white,
+                  );
+                  return;
+                }
+
+                // Verify email code first
+                await authController.verifyEmailCode();
+
+                // Only proceed if verification was successful
+                if (authController.isEmailVerified.value) {
+                  // Complete the registration process
+                  await authController.completeRegistration();
+                }
+              },
+            ),
+          ),
         ],
       ),
     );

@@ -149,8 +149,9 @@ class User {
   }
 
   @override
+  @override
   String toString() {
-    return 'User{id: $id, name: $name, userName: $userName, email: $email}';
+    return 'User{id: $id, name: $name, userName: $userName, email: $email, phone: $phone, bio: $bio, updatedAt: $updatedAt}';
   }
 
   @override

@@ -9,16 +9,21 @@ import 'package:photo_bug/app/modules/settings/profile/edit_profile.dart';
 import 'package:photo_bug/app/modules/settings/settings/settings.dart';
 import 'package:photo_bug/app/core/common_widget/common_image_view_widget.dart';
 import 'package:photo_bug/app/core/common_widget/my_button_widget.dart';
+import 'package:photo_bug/app/modules/settings/profile/controller/profile_controller.dart';
 
 import 'package:photo_bug/app/core/common_widget/my_text_widget.dart';
 import 'package:photo_bug/app/core/common_widget/review_card_widget.dart';
 import 'package:photo_bug/app/core/common_widget/simple_app_bar_widget.dart';
 import 'package:photo_bug/main.dart';
+
 class Profile extends StatelessWidget {
   const Profile({super.key});
 
   @override
   Widget build(BuildContext context) {
+    // Get ProfileController instance
+    final ProfileController profileController = Get.put(ProfileController());
+
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 20,
@@ -38,10 +43,7 @@ class Profile extends StatelessWidget {
               onTap: () {
                 Get.to(() => Settings());
               },
-              child: Image.asset(
-                Assets.imagesSetting,
-                height: 24,
-              ),
+              child: Image.asset(Assets.imagesSetting, height: 24),
             ),
           ],
         ),
@@ -57,14 +59,18 @@ class Profile extends StatelessWidget {
                 Center(
                   child: Stack(
                     children: [
-                      CommonImageView(
-                        url: dummyImg,
-                        height: 86,
-                        width: 86,
-                        radius: 100,
-                        borderWidth: 4,
-                        borderColor: kInputBorderColor,
-                      ),
+                      // Use user's profile picture from ProfileController
+                      Obx(() {
+                        final user = profileController.currentUser;
+                        return CommonImageView(
+                          url: user?.profilePicture ?? dummyImg,
+                          height: 86,
+                          width: 86,
+                          radius: 100,
+                          borderWidth: 4,
+                          borderColor: kInputBorderColor,
+                        );
+                      }),
                       Positioned(
                         bottom: 8,
                         right: 8,
@@ -76,14 +82,18 @@ class Profile extends StatelessWidget {
                     ],
                   ),
                 ),
-                MyText(
-                  text: 'Mark',
-                  size: 16,
-                  weight: FontWeight.w600,
-                  textAlign: TextAlign.center,
-                  paddingTop: 16,
-                  paddingBottom: 8,
-                ),
+                // Display user's name from ProfileController
+                Obx(() {
+                  final user = profileController.currentUser;
+                  return MyText(
+                    text: user?.name ?? 'Mark',
+                    size: 16,
+                    weight: FontWeight.w600,
+                    textAlign: TextAlign.center,
+                    paddingTop: 16,
+                    paddingBottom: 8,
+                  );
+                }),
                 Wrap(
                   spacing: 4,
                   crossAxisAlignment: WrapCrossAlignment.center,
@@ -94,10 +104,7 @@ class Profile extends StatelessWidget {
                       height: 16,
                       color: kSecondaryColor,
                     ),
-                    MyText(
-                      text: '5.0 (32)',
-                      weight: FontWeight.w500,
-                    ),
+                    MyText(text: '5.0 (32)', weight: FontWeight.w500),
                   ],
                 ),
                 MyText(
@@ -106,13 +113,19 @@ class Profile extends StatelessWidget {
                   paddingTop: 16,
                   paddingBottom: 12,
                 ),
-                MyText(
-                  text:
-                      'I\'m a full-time photographer based in NYC. I shoot portraits, weddings, lifestyle, and events throughout the USA and all over the world. I strive to capture sincere emotions and bring timeless approach to my work.',
-                  size: 12,
-                  color: kQuaternaryColor,
-                  paddingBottom: 16,
-                ),
+                // Display user's bio from ProfileController
+                Obx(() {
+                  final user = profileController.currentUser;
+                  return MyText(
+                    text:
+                        user?.bio?.isNotEmpty == true
+                            ? user!.bio!
+                            : 'I\'m a full-time photographer based in NYC. I shoot portraits, weddings, lifestyle, and events throughout the USA and all over the world. I strive to capture sincere emotions and bring timeless approach to my work.',
+                    size: 12,
+                    color: kQuaternaryColor,
+                    paddingBottom: 16,
+                  );
+                }),
                 Row(
                   children: [
                     Expanded(
@@ -134,9 +147,7 @@ class Profile extends StatelessWidget {
                     ),
                   ],
                 ),
-                SizedBox(
-                  height: 12,
-                ),
+                SizedBox(height: 12),
               ],
             ),
           ),
@@ -150,17 +161,12 @@ class Profile extends StatelessWidget {
               itemBuilder: (BuildContext context, int index) {
                 return Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: CommonImageView(
-                    url: dummyImg,
-                    radius: 8,
-                  ),
+                  child: CommonImageView(url: dummyImg, radius: 8),
                 );
               },
             ),
           ),
-          SizedBox(
-            height: 20,
-          ),
+          SizedBox(height: 20),
           Padding(
             padding: AppSizes.HORIZONTAL,
             child: Column(
@@ -190,9 +196,7 @@ class Profile extends StatelessWidget {
                     ),
                   ],
                 ),
-                SizedBox(
-                  height: 24,
-                ),
+                SizedBox(height: 24),
                 ReviewCard(
                   profileImage: dummyImg,
                   name: 'Thomas T',
@@ -201,9 +205,7 @@ class Profile extends StatelessWidget {
                   time: '3 minutes ago',
                   rating: 5.0,
                 ),
-                SizedBox(
-                  height: 16,
-                ),
+                SizedBox(height: 16),
                 MyButton(
                   borderWidth: 1,
                   bgColor: Colors.transparent,
@@ -216,7 +218,7 @@ class Profile extends StatelessWidget {
                 ),
               ],
             ),
-          )
+          ),
         ],
       ),
     );

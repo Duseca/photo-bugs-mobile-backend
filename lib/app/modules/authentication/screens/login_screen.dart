@@ -136,9 +136,9 @@ class Login extends StatelessWidget {
             // Social Login
             Obx(() => SocialLogin(
               isLoading: authController.isLoading.value,
-              onGoogle: authController.loginWithGoogle,
-              onApple: authController.loginWithApple,
-              onFacebook: authController.loginWithFacebook,
+              onGoogle:(){},
+              onApple: (){},
+              onFacebook:(){},
             )),
           ],
         ),

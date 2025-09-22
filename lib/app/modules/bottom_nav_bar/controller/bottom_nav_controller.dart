@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:photo_bug/app/core/constants/app_images.dart';
 import 'package:photo_bug/app/modules/favorite/controller/favourite_controller.dart';
+import 'package:photo_bug/app/modules/settings/profile/controller/profile_controller.dart';
 import 'package:photo_bug/app/routes/app_pages.dart';
 
 // Import your existing controllers to ensure they're available
@@ -305,8 +306,8 @@ class BottomNavController extends GetxController
     if (currentIndex.value == 4) {
       // Handle double tap on profile
       try {
-        // final profileController = Get.find<ProfileController>();
-        // profileController.refreshProfile();
+        final profileController = Get.find<ProfileController>();
+        profileController.refreshProfile();
       } catch (e) {
         print('ProfileController not found: $e');
       }

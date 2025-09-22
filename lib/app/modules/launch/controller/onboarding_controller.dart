@@ -1,5 +1,6 @@
 import 'package:get/get.dart';
 import 'package:photo_bug/app/core/constants/app_images.dart';
+import 'package:photo_bug/app/core/locators/service_locator.dart';
 import 'package:photo_bug/app/models/onboarding/onboarding_model.dart';
 import 'package:photo_bug/app/modules/authentication/screens/login_screen.dart';
 import 'package:photo_bug/app/routes/app_pages.dart';
@@ -92,7 +93,7 @@ class OnboardingController extends GetxController {
     isLoading.value = true;
 
     // Save onboarding completion status
-    _saveOnboardingStatus();
+    Get.services.auth.completeOnboarding();
 
     // Navigate to login
     Future.delayed(const Duration(milliseconds: 500), () {
@@ -102,10 +103,6 @@ class OnboardingController extends GetxController {
   }
 
   // Save onboarding completion status (implement with your storage solution)
-  void _saveOnboardingStatus() {
-    // Example: SharedPreferences, GetStorage, etc.
-    // await GetStorage().write('onboarding_completed', true);
-  }
 
   // Jump to specific page
   void jumpToPage(int index) {

@@ -8,25 +8,8 @@ class ApiConfig {
   static final ApiConfig _instance = ApiConfig._internal();
   factory ApiConfig() => _instance;
 
-  // Environment configurations
-  static const String _devBaseUrl = 'http://localhost:3000';
-  static const String _stagingBaseUrl = 'https://staging-api.photobug.com';
-  static const String _prodBaseUrl = 'https://api.photobug.com';
-
-  // Current environment
-  static const Environment _currentEnvironment = Environment.development;
-
-  // Base URL getter based on environment
-  static String get baseUrl {
-    switch (_currentEnvironment) {
-      case Environment.development:
-        return _devBaseUrl;
-      case Environment.staging:
-        return _stagingBaseUrl;
-      case Environment.production:
-        return _prodBaseUrl;
-    }
-  }
+  // Base URL - Updated to match your Postman collection
+  static const String baseUrl = 'https://photo-bugs-custom-backend.vercel.app';
 
   // API versioning
   static const String apiVersion = 'v1';
@@ -77,10 +60,7 @@ class ApiConfig {
   static const _ApiEndpoints endpoints = _ApiEndpoints();
 }
 
-/// Environment enumeration
-enum Environment { development, staging, production }
-
-/// API Endpoints configuration
+/// API Endpoints configuration - Updated to match Postman collection
 class _ApiEndpoints {
   const _ApiEndpoints();
 
@@ -95,7 +75,8 @@ class _ApiEndpoints {
   String get photoBundles => '/photo-bundles';
   String get transactions => '/transactions';
 
-  // User endpoints
+  // User endpoints - Updated with send-email endpoint
+  String get sendEmail => '$users/send-email';
   String get register => '$users/register';
   String get login => '$users/login';
   String get verifyEmail => '$users/verify-email';
@@ -126,7 +107,7 @@ class _ApiEndpoints {
   String eventRecipients(String id) => '$events/$id/recipients';
   String eventAccept(String id) => '$events/$id/accept';
   String eventDecline(String id) => '$events/$id/decline';
-  String eventDelete(String id) => '$events/$id'; // Fixed endpoint
+  String eventDelete(String id) => '$events/$id';
 
   // Review endpoints
   String get allReviews => reviews;
@@ -192,23 +173,10 @@ class HttpStatusCodes {
   static const int serviceUnavailable = 503;
 }
 
-/// Environment checker utility
+/// Simple environment configuration without multiple environments
 class EnvironmentConfig {
-  static bool get isDevelopment =>
-      ApiConfig._currentEnvironment == Environment.development;
-  static bool get isStaging =>
-      ApiConfig._currentEnvironment == Environment.staging;
-  static bool get isProduction =>
-      ApiConfig._currentEnvironment == Environment.production;
-
-  static String get environmentName {
-    switch (ApiConfig._currentEnvironment) {
-      case Environment.development:
-        return 'Development';
-      case Environment.staging:
-        return 'Staging';
-      case Environment.production:
-        return 'Production';
-    }
-  }
+  static bool get isDevelopment => false;
+  static bool get isStaging => false;
+  static bool get isProduction => true;
+  static String get environmentName => 'Production';
 }

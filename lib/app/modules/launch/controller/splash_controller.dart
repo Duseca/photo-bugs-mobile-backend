@@ -38,7 +38,7 @@ class SplashController extends GetxController {
   // Navigate to welcome screen
   void _navigateToWelcome() {
     isLoading.value = false;
-    Get.toNamed(Routes.WELCOME_SCREEN);
+    Get.toNamed(Routes.BOTTOM_NAV_BAR);
   }
 
   void skipSplash() {

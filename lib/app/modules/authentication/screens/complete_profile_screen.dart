@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-
 import 'package:intl/intl.dart';
 import 'package:photo_bug/app/core/constants/app_colors.dart'
     show kTertiaryColor, kSecondaryColor, kQuaternaryColor, kInputBorderColor;
@@ -8,7 +7,6 @@ import 'package:photo_bug/app/core/constants/app_fonts.dart';
 import 'package:photo_bug/app/core/constants/app_images.dart';
 import 'package:photo_bug/app/core/constants/app_sizes.dart';
 import 'package:photo_bug/app/modules/authentication/controllers/authentication_controller.dart';
-
 import 'package:photo_bug/app/core/common_widget/common_image_view_widget.dart';
 import 'package:photo_bug/app/core/common_widget/custom_dialog_widget.dart';
 import 'package:photo_bug/app/core/common_widget/custom_drop_down_widget.dart';
@@ -17,13 +15,50 @@ import 'package:photo_bug/app/core/common_widget/my_text_field_widget.dart';
 import 'package:adoptive_calendar/adoptive_calendar.dart';
 import 'package:photo_bug/app/core/common_widget/my_text_widget.dart';
 
-class CompleteProfile extends StatelessWidget {
+class CompleteProfile extends StatefulWidget {
   const CompleteProfile({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final AuthController authController = Get.find<AuthController>();
+  State<CompleteProfile> createState() => _CompleteProfileState();
+}
 
+class _CompleteProfileState extends State<CompleteProfile> {
+  late final AuthController authController;
+  late final TextEditingController dobDisplayController;
+
+  @override
+  void initState() {
+    super.initState();
+    authController = Get.find<AuthController>();
+    dobDisplayController = TextEditingController();
+
+    // Set initial value if date is already selected
+    if (authController.selectedDateOfBirth.value != null) {
+      dobDisplayController.text = DateFormat(
+        'dd/MM/yyyy',
+      ).format(authController.selectedDateOfBirth.value!);
+    }
+
+    // Update display when date changes
+    ever(authController.selectedDateOfBirth, (DateTime? date) {
+      if (mounted) {
+        if (date != null) {
+          dobDisplayController.text = DateFormat('dd/MM/yyyy').format(date);
+        } else {
+          dobDisplayController.clear();
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    dobDisplayController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 20,
@@ -93,27 +128,27 @@ class CompleteProfile extends StatelessWidget {
                     ),
                   ),
 
-                  // Date of Birth
-                  Obx(
-                    () => MyTextField(
-                      label: 'Date of Birth',
-                      controller: TextEditingController(
-                        text:
-                            authController.selectedDateOfBirth.value != null
-                                ? DateFormat('dd/MM/yyyy').format(
-                                  authController.selectedDateOfBirth.value!,
-                                )
-                                : '',
-                      ),
-                      readOnly: true,
-                      onTap: () => _showDatePicker(authController),
-                      suffix: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Image.asset(Assets.imagesCalendar, height: 18),
-                        ],
-                      ),
+                  // Date of Birth - Fixed version
+                  MyTextField(
+                    label: 'Date of Birth',
+                    controller: dobDisplayController,
+                    readOnly: true,
+                    onTap: () => _showDatePicker(),
+                    suffix: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Image.asset(Assets.imagesCalendar, height: 18),
+                      ],
                     ),
+                  ),
+                  MyTextField(
+                    label: 'Phone Number',
+                    controller: authController.phoneController,
+                    validator:
+                        (value) => authController.validateRequired(
+                          value,
+                          'phone Number',
+                        ),
                   ),
 
                   // City
@@ -199,7 +234,6 @@ class CompleteProfile extends StatelessWidget {
                 right: 0,
                 child: GestureDetector(
                   onTap: () {
-                    // Handle image upload
                     Get.snackbar(
                       'Info',
                       'Image upload functionality to be implemented',
@@ -223,7 +257,7 @@ class CompleteProfile extends StatelessWidget {
     );
   }
 
-  void _showDatePicker(AuthController authController) {
+  void _showDatePicker() {
     Get.dialog(
       CustomDialog(
         child: Column(
@@ -232,7 +266,11 @@ class CompleteProfile extends StatelessWidget {
             AdoptiveCalendar(
               initialDate:
                   authController.selectedDateOfBirth.value ?? DateTime.now(),
-              onSelection: (n)=> authController.selectDateOfBirth(n!),
+              onSelection: (date) {
+                if (date != null) {
+                  authController.selectDateOfBirth(date);
+                }
+              },
               minYear: 1900,
               maxYear: DateTime.now().year,
               datePickerOnly: true,
