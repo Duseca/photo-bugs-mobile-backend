@@ -24,7 +24,7 @@ class MyButton extends StatelessWidget {
   });
 
   final String buttonText;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final double? height, width, textSize, radius, borderWidth, horizontalPadding;
   final Color? bgColor, textColor, borderColor, splashColor, loaderColor;
   final FontWeight? weight;

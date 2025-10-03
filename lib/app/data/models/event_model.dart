@@ -8,8 +8,8 @@ class Event {
   final String? image;
   final Location? location;
   final DateTime? date;
-  final int? timeStart; // in HHMM format (e.g., 1200 for 12:00)
-  final int? timeEnd; // in HHMM format (e.g., 1445 for 14:45)
+  final int? timeStart;
+  final int? timeEnd;
   final String? type;
   final String? role;
   final bool matureContent;
@@ -37,7 +37,6 @@ class Event {
     this.updatedAt,
   });
 
-  // Helper methods for time formatting
   String? get formattedStartTime {
     if (timeStart == null) return null;
     final hours = timeStart! ~/ 100;
@@ -53,36 +52,150 @@ class Event {
   }
 
   factory Event.fromJson(Map<String, dynamic> json) {
+    // Safely extract creator ID
+    String? creatorId;
+    try {
+      if (json['created_by'] != null) {
+        if (json['created_by'] is Map) {
+          creatorId = json['created_by']['_id'] ?? json['created_by']['id'];
+        } else if (json['created_by'] is String) {
+          creatorId = json['created_by'];
+        }
+      }
+      creatorId ??= json['creatorId'] ?? json['creator_id'];
+    } catch (e) {
+      print('Error parsing creatorId: $e');
+    }
+
+    // Safely extract photographer ID
+    String? photographerId;
+    try {
+      if (json['photographer'] != null) {
+        if (json['photographer'] is Map) {
+          photographerId =
+              json['photographer']['_id'] ?? json['photographer']['id'];
+        } else if (json['photographer'] is String) {
+          photographerId = json['photographer'];
+        }
+      }
+      photographerId ??= json['photographerId'];
+    } catch (e) {
+      print('Error parsing photographerId: $e');
+    }
+
+    // Safely parse location
+    Location? location;
+    try {
+      if (json['location'] != null && json['location'] is Map) {
+        location = Location.fromJson(json['location'] as Map<String, dynamic>);
+      }
+    } catch (e) {
+      print('Error parsing location: $e');
+      location = null;
+    }
+
+    // Safely parse date
+    DateTime? date;
+    try {
+      if (json['date'] != null) {
+        date = DateTime.tryParse(json['date'].toString());
+      }
+    } catch (e) {
+      print('Error parsing date: $e');
+    }
+
+    // Safely parse recipients
+    List<EventRecipient>? recipients;
+    try {
+      if (json['recipients'] != null && json['recipients'] is List) {
+        recipients =
+            (json['recipients'] as List)
+                .map((r) {
+                  try {
+                    return EventRecipient.fromJson(r as Map<String, dynamic>);
+                  } catch (e) {
+                    print('Error parsing recipient: $e');
+                    return null;
+                  }
+                })
+                .where((r) => r != null)
+                .cast<EventRecipient>()
+                .toList();
+      }
+    } catch (e) {
+      print('Error parsing recipients: $e');
+      recipients = [];
+    }
+
+    // Parse createdAt
+    DateTime? createdAt;
+    try {
+      if (json['createdAt'] != null) {
+        createdAt = DateTime.tryParse(json['createdAt'].toString());
+      }
+    } catch (e) {
+      print('Error parsing createdAt: $e');
+    }
+
+    // Parse updatedAt
+    DateTime? updatedAt;
+    try {
+      if (json['updatedAt'] != null) {
+        updatedAt = DateTime.tryParse(json['updatedAt'].toString());
+      }
+    } catch (e) {
+      print('Error parsing updatedAt: $e');
+    }
+
     return Event(
-      id: json['_id'] ?? json['id'],
-      name: json['name'] ?? '',
-      creatorId: json['creatorId'] ?? json['creator_id'],
-      photographerId: json['photographer'],
-      image: json['image'],
-      location:
-          json['location'] != null ? Location.fromJson(json['location']) : null,
-      date: json['date'] != null ? DateTime.tryParse(json['date']) : null,
+      id: json['_id']?.toString() ?? json['id']?.toString(),
+      name: json['name']?.toString() ?? 'Untitled Event',
+      creatorId: creatorId,
+      photographerId: photographerId,
+      image: json['image']?.toString(),
+      location: location,
+      date: date,
       timeStart: json['time_start'] ?? json['timeStart'],
       timeEnd: json['time_end'] ?? json['timeEnd'],
-      type: json['type'],
-      role: json['role'],
+      type: json['type']?.toString(),
+      role: json['role']?.toString(),
       matureContent: json['mature_content'] ?? json['matureContent'] ?? false,
-      recipients:
-          json['recipients'] != null
-              ? List<EventRecipient>.from(
-                json['recipients'].map((x) => EventRecipient.fromJson(x)),
-              )
-              : null,
-      status: EventStatusExtension.fromString(json['status'] ?? 'pending'),
-      createdAt:
-          json['createdAt'] != null
-              ? DateTime.tryParse(json['createdAt'])
-              : null,
-      updatedAt:
-          json['updatedAt'] != null
-              ? DateTime.tryParse(json['updatedAt'])
-              : null,
+      recipients: recipients,
+      status: _determineEventStatus(json, date),
+      createdAt: createdAt,
+      updatedAt: updatedAt,
     );
+  }
+
+  static EventStatus _determineEventStatus(
+    Map<String, dynamic> json,
+    DateTime? date,
+  ) {
+    // If status is explicitly provided
+    if (json['status'] != null) {
+      try {
+        return EventStatusExtension.fromString(json['status'].toString());
+      } catch (e) {
+        print('Error parsing status: $e');
+      }
+    }
+
+    // Determine status based on date
+    if (date != null) {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final eventDay = DateTime(date.year, date.month, date.day);
+
+      if (eventDay.isAfter(today)) {
+        return EventStatus.confirmed; // Future event
+      } else if (eventDay.isBefore(today)) {
+        return EventStatus.completed; // Past event
+      } else {
+        return EventStatus.ongoing; // Today's event
+      }
+    }
+
+    return EventStatus.pending;
   }
 
   Map<String, dynamic> toJson() {
@@ -168,9 +281,11 @@ class EventRecipient {
 
   factory EventRecipient.fromJson(Map<String, dynamic> json) {
     return EventRecipient(
-      id: json['id'] ?? json['user_id'],
-      email: json['email'],
-      status: RecipientStatusExtension.fromString(json['status'] ?? 'pending'),
+      id: json['id']?.toString() ?? json['user_id']?.toString(),
+      email: json['email']?.toString(),
+      status: RecipientStatusExtension.fromString(
+        json['status']?.toString() ?? 'pending',
+      ),
     );
   }
 
@@ -200,7 +315,6 @@ class EventRecipient {
   }
 }
 
-// Create Event Request Model
 class CreateEventRequest {
   final String name;
   final String? photographerId;
@@ -242,7 +356,6 @@ class CreateEventRequest {
   }
 }
 
-// Add Recipients Request Model
 class AddRecipientsRequest {
   final List<EventRecipient> recipients;
 
@@ -253,12 +366,11 @@ class AddRecipientsRequest {
   }
 }
 
-// Event Search Parameters
 class EventSearchParams {
   final Location? location;
   final String? role;
   final String? type;
-  final double? distance; // in kilometers
+  final double? distance;
 
   EventSearchParams({this.location, this.role, this.type, this.distance});
 
@@ -282,7 +394,6 @@ class EventSearchParams {
   }
 }
 
-// Event Status Enum
 enum EventStatus { pending, confirmed, ongoing, completed, cancelled }
 
 extension EventStatusExtension on EventStatus {
@@ -317,7 +428,6 @@ extension EventStatusExtension on EventStatus {
   }
 }
 
-// Recipient Status Enum
 enum RecipientStatus { pending, accepted, declined }
 
 extension RecipientStatusExtension on RecipientStatus {

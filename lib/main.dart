@@ -6,7 +6,6 @@ import 'package:photo_bug/app/core/common_widget/global_errorwidget.dart';
 import 'package:photo_bug/app/core/helpers/logger.dart';
 import 'package:photo_bug/app/core/locators/service_locator.dart';
 import 'package:photo_bug/app/core/theme/light_theme.dart';
-import 'package:photo_bug/app/data/configs/supabase_config.dart';
 
 import 'package:photo_bug/app/routes/app_pages.dart';
 
@@ -15,7 +14,7 @@ import 'package:flutter/foundation.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await SupabaseConfig.initialize();
+
   FlutterError.onError = (FlutterErrorDetails details) {
     AppLogger.error(details.toString());
     FlutterError.presentError(details);

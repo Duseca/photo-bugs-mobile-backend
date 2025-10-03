@@ -8,13 +8,24 @@ class Location {
   double get latitude => coordinates.length > 1 ? coordinates[1] : 0.0;
 
   factory Location.fromJson(Map<String, dynamic> json) {
-    return Location(
-      coordinates:
-          json['coordinates'] != null
-              ? List<double>.from(json['coordinates'].map((x) => x.toDouble()))
-              : [0.0, 0.0],
-      type: json['type'] ?? 'Point',
-    );
+    List<double> coords = [0.0, 0.0]; // Default empty coordinates
+
+    // Handle coordinates field
+    if (json['coordinates'] != null) {
+      if (json['coordinates'] is List) {
+        final coordList = json['coordinates'] as List;
+        if (coordList.isNotEmpty) {
+          coords =
+              coordList.map((e) {
+                if (e is num) return e.toDouble();
+                if (e is String) return double.tryParse(e) ?? 0.0;
+                return 0.0;
+              }).toList();
+        }
+      }
+    }
+
+    return Location(coordinates: coords, type: json['type'] ?? 'Point');
   }
 
   factory Location.fromCoordinates(double longitude, double latitude) {

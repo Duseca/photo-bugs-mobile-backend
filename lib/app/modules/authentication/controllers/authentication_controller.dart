@@ -3,7 +3,6 @@ import 'package:get/get.dart';
 import 'package:photo_bug/app/modules/authentication/screens/complete_profile_screen.dart';
 import 'package:photo_bug/app/modules/authentication/screens/forget_password.dart';
 import 'package:photo_bug/app/modules/authentication/screens/interest_selection_screen.dart';
-import 'package:photo_bug/app/modules/authentication/screens/login_screen.dart';
 import 'package:photo_bug/app/modules/authentication/screens/otp_verification.dart';
 import 'package:photo_bug/app/routes/app_pages.dart';
 import 'package:photo_bug/app/services/auth/auth_service.dart';
@@ -12,6 +11,7 @@ import 'package:photo_bug/app/data/models/auth_models.dart' as auth_models;
 class AuthController extends GetxController {
   // Get AuthService instance
   final AuthService _authService = AuthService.instance;
+  final isSocialLoading = false.obs;
 
   // Observable variables
   final isLoading = false.obs;
@@ -44,6 +44,10 @@ class AuthController extends GetxController {
   // Password visibility
   final isPasswordVisible = false.obs;
   final isConfirmPasswordVisible = false.obs;
+
+  // Social auth state
+  final isFromSocialAuth = false.obs; // Track if user came from social auth
+  final socialUserInfo = Rxn<auth_models.SocialUserInfo>();
 
   // OTP Timer
   final otpTimer = 58.obs;
@@ -171,6 +175,87 @@ class AuthController extends GetxController {
 
   bool isInterestSelected(String interest) {
     return selectedInterests.contains(interest);
+  }
+
+  // ==================== SOCIAL AUTHENTICATION ====================
+
+  /// Google Sign In
+
+  /// Google Sign In (Updated for v7.x)
+  Future<void> signInWithGoogle() async {
+    try {
+      isSocialLoading.value = true;
+
+      final response = await _authService.signInWithGoogle();
+
+      if (response.success) {
+        _showSuccessSnackbar('Google sign-in successful!');
+        // Navigation handled by auth state listener in _listenToAuthState()
+      } else {
+        _showErrorSnackbar(response.error ?? 'Google sign-in failed');
+      }
+    } catch (e) {
+      _showErrorSnackbar('Google sign-in failed: $e');
+      print('Google sign-in error in controller: $e');
+    } finally {
+      isSocialLoading.value = false;
+    }
+  }
+
+  /// Facebook Sign In (Updated for v7.x)
+  Future<void> signInWithFacebook() async {
+    try {
+      isSocialLoading.value = true;
+
+      final response = await _authService.signInWithFacebook();
+
+      if (response.success) {
+        _showSuccessSnackbar('Facebook sign-in successful!');
+        // Navigation handled by auth state listener in _listenToAuthState()
+      } else {
+        _showErrorSnackbar(response.error ?? 'Facebook sign-in failed');
+      }
+    } catch (e) {
+      _showErrorSnackbar('Facebook sign-in failed: $e');
+      print('Facebook sign-in error in controller: $e');
+    } finally {
+      isSocialLoading.value = false;
+    }
+  }
+
+  /// Check if current user is from social auth and needs profile completion
+  bool get needsProfileCompletion => _authService.needsProfileCompletion;
+
+  /// Pre-fill profile form with social auth data
+  void prefillSocialData() {
+    if (_authService.currentUser != null) {
+      final user = _authService.currentUser!;
+
+      // Pre-fill name fields
+      final nameParts = user.name.split(' ');
+      if (nameParts.isNotEmpty) {
+        firstNameController.text = nameParts.first;
+        if (nameParts.length > 1) {
+          lastNameController.text = nameParts.skip(1).join(' ');
+        }
+      }
+
+      // Pre-fill other fields
+      usernameController.text = user.userName;
+      emailController.text = user.email;
+
+      // Only set phone if it's not the default
+      if (user.phone != null && user.phone != '+1234567890') {
+        phoneController.text = user.phone!;
+      }
+
+      // Pre-fill bio if available
+      if (user.bio != null && user.bio!.isNotEmpty) {
+        bioController.text = user.bio!;
+      }
+
+      print('Social data pre-filled for user: ${user.name}');
+    }
   }
 
   // Date picker
@@ -495,6 +580,10 @@ class AuthController extends GetxController {
     isEmailVerified.value = false;
     isPasswordVisible.value = false;
     isConfirmPasswordVisible.value = false;
+
+    // Reset social auth state
+    isFromSocialAuth.value = false;
+    socialUserInfo.value = null;
 
     // Reset OTP timer
     otpTimer.value = 58;

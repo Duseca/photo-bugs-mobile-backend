@@ -7,6 +7,7 @@ import 'package:photo_bug/app/core/constants/app_colors.dart';
 import 'package:photo_bug/app/core/constants/app_fonts.dart';
 import 'package:photo_bug/app/core/constants/app_images.dart';
 import 'package:photo_bug/app/core/constants/app_sizes.dart';
+import 'package:photo_bug/app/data/models/event_model.dart';
 import 'package:photo_bug/app/modules/user_events/controllers/user_events_controller.dart';
 import 'package:photo_bug/app/core/common_widget/common_image_view_widget.dart';
 import 'package:photo_bug/app/core/common_widget/custom_drop_down_widget.dart';
@@ -176,38 +177,22 @@ class UserEvents extends GetView<UserEventsController> {
   }
 }
 
-// views/my_events_tab.dart
+// ==================== MY EVENTS TAB ====================
 class _MyEventsTab extends GetView<UserEventsController> {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      if (controller.isLoading.value) {
+      if (controller.isLoading.value && controller.myEvents.isEmpty) {
         return const Center(child: CircularProgressIndicator());
       }
 
       final events = controller.filteredMyEvents;
 
       if (events.isEmpty) {
-        return Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.event_note, size: 64, color: Colors.grey),
-              SizedBox(height: 16),
-              MyText(
-                text: 'No events found',
-                size: 18,
-                weight: FontWeight.w600,
-                color: Colors.grey,
-              ),
-              SizedBox(height: 8),
-              MyText(
-                text: 'Create your first event using the + button',
-                size: 14,
-                color: Colors.grey,
-              ),
-            ],
-          ),
+        return _buildEmptyState(
+          icon: Icons.event_note,
+          title: 'No events found',
+          subtitle: 'Create your first event using the + button',
         );
       }
 
@@ -219,11 +204,7 @@ class _MyEventsTab extends GetView<UserEventsController> {
           itemBuilder: (context, index) {
             final event = events[index];
             return EventCard(
-              title: event['title'],
-              image: event['image'],
-              date: event['date'],
-              location: event['location'],
-              eventType: event['eventType'],
+              event: event,
               onTap:
                   () =>
                       controller.navigateToEventDetails(event, isMyEvent: true),
@@ -233,40 +214,48 @@ class _MyEventsTab extends GetView<UserEventsController> {
       );
     });
   }
+
+  Widget _buildEmptyState({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 64, color: Colors.grey),
+          const SizedBox(height: 16),
+          MyText(
+            text: title,
+            size: 18,
+            weight: FontWeight.w600,
+            color: Colors.grey,
+          ),
+          const SizedBox(height: 8),
+          MyText(text: subtitle, size: 14, color: Colors.grey),
+        ],
+      ),
+    );
+  }
 }
 
-// views/shared_events_tab.dart
+// ==================== SHARED EVENTS TAB ====================
 class _SharedEventsTab extends GetView<UserEventsController> {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      if (controller.isLoading.value) {
+      if (controller.isLoading.value && controller.sharedEvents.isEmpty) {
         return const Center(child: CircularProgressIndicator());
       }
 
       final events = controller.filteredSharedEvents;
 
       if (events.isEmpty) {
-        return Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.share, size: 64, color: Colors.grey),
-              SizedBox(height: 16),
-              MyText(
-                text: 'No shared events',
-                size: 18,
-                weight: FontWeight.w600,
-                color: Colors.grey,
-              ),
-              SizedBox(height: 8),
-              MyText(
-                text: 'Events shared with you will appear here',
-                size: 14,
-                color: Colors.grey,
-              ),
-            ],
-          ),
+        return _buildEmptyState(
+          icon: Icons.share,
+          title: 'No shared events',
+          subtitle: 'Events shared with you will appear here',
         );
       }
 
@@ -278,11 +267,7 @@ class _SharedEventsTab extends GetView<UserEventsController> {
           itemBuilder: (context, index) {
             final event = events[index];
             return EventCard(
-              title: event['title'],
-              image: event['image'],
-              date: event['date'],
-              location: event['location'],
-              eventType: event['eventType'],
+              event: event,
               onTap:
                   () => controller.navigateToEventDetails(
                     event,
@@ -294,24 +279,38 @@ class _SharedEventsTab extends GetView<UserEventsController> {
       );
     });
   }
+
+  Widget _buildEmptyState({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 64, color: Colors.grey),
+          const SizedBox(height: 16),
+          MyText(
+            text: title,
+            size: 18,
+            weight: FontWeight.w600,
+            color: Colors.grey,
+          ),
+          const SizedBox(height: 8),
+          MyText(text: subtitle, size: 14, color: Colors.grey),
+        ],
+      ),
+    );
+  }
 }
 
-// ==================== WIDGETS ====================
-
-// widgets/event_card.dart
+// ==================== EVENT CARD WIDGET ====================
 class EventCard extends StatelessWidget {
-  final String image, title, date, location, eventType;
+  final Event event;
   final VoidCallback onTap;
 
-  const EventCard({
-    super.key,
-    required this.image,
-    required this.title,
-    required this.date,
-    required this.location,
-    required this.eventType,
-    required this.onTap,
-  });
+  const EventCard({super.key, required this.event, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -321,7 +320,12 @@ class EventCard extends StatelessWidget {
         onTap: onTap,
         child: Row(
           children: [
-            CommonImageView(url: image, height: 80, width: 64, radius: 8),
+            CommonImageView(
+              url: event.image ?? '',
+              height: 80,
+              width: 64,
+              radius: 8,
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -331,7 +335,7 @@ class EventCard extends StatelessWidget {
                     children: [
                       Expanded(
                         child: MyText(
-                          text: date,
+                          text: _formatDate(event.date),
                           size: 11,
                           color: kQuaternaryColor,
                           weight: FontWeight.w500,
@@ -345,24 +349,24 @@ class EventCard extends StatelessWidget {
                           vertical: 2,
                         ),
                         decoration: BoxDecoration(
-                          color: _getEventTypeColor(eventType).withOpacity(0.1),
+                          color: _getStatusColor(event.status).withOpacity(0.1),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: _getEventTypeColor(eventType),
+                            color: _getStatusColor(event.status),
                             width: 1,
                           ),
                         ),
                         child: MyText(
-                          text: eventType,
+                          text: _getStatusText(event.status),
                           size: 10,
-                          color: _getEventTypeColor(eventType),
+                          color: _getStatusColor(event.status),
                           weight: FontWeight.w500,
                         ),
                       ),
                     ],
                   ),
                   MyText(
-                    text: title,
+                    text: event.name,
                     weight: FontWeight.w500,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -374,7 +378,7 @@ class EventCard extends StatelessWidget {
                       Image.asset(Assets.imagesLocation, height: 16),
                       Expanded(
                         child: MyText(
-                          text: location,
+                          text: _getLocationText(event),
                           size: 11,
                           color: kQuaternaryColor,
                           maxLines: 1,
@@ -393,16 +397,63 @@ class EventCard extends StatelessWidget {
     );
   }
 
-  Color _getEventTypeColor(String eventType) {
-    switch (eventType.toLowerCase()) {
-      case 'scheduled':
-        return Colors.green;
-      case 'pending':
+  String _formatDate(DateTime? date) {
+    if (date == null) return 'Date not set';
+    return '${date.day} ${_getMonthName(date.month)}, ${date.year}';
+  }
+
+  String _getMonthName(int month) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return months[month - 1];
+  }
+
+  String _getLocationText(Event event) {
+    if (event.location != null) {
+      return '${event.location!.latitude.toStringAsFixed(4)}, ${event.location!.longitude.toStringAsFixed(4)}';
+    }
+    return 'Location not set';
+  }
+
+  String _getStatusText(EventStatus status) {
+    switch (status) {
+      case EventStatus.pending:
+        return 'Pending';
+      case EventStatus.confirmed:
+        return 'Confirmed';
+      case EventStatus.ongoing:
+        return 'Ongoing';
+      case EventStatus.completed:
+        return 'Completed';
+      case EventStatus.cancelled:
+        return 'Cancelled';
+    }
+  }
+
+  Color _getStatusColor(EventStatus status) {
+    switch (status) {
+      case EventStatus.pending:
         return Colors.orange;
-      case 'cancelled':
+      case EventStatus.confirmed:
+        return Colors.blue;
+      case EventStatus.ongoing:
+        return Colors.green;
+      case EventStatus.completed:
+        return Colors.grey;
+      case EventStatus.cancelled:
         return Colors.red;
-      default:
-        return kSecondaryColor;
     }
   }
 }

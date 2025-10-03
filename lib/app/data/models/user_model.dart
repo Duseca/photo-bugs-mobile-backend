@@ -1,6 +1,7 @@
 import 'package:photo_bug/app/data/models/address_model.dart';
 import 'package:photo_bug/app/data/models/location_model.dart';
 import 'package:photo_bug/app/data/models/user_setting_model.dart';
+import 'package:photo_bug/app/data/models/google_tokens_model.dart';
 
 class User {
   final String? id;
@@ -18,6 +19,7 @@ class User {
   final List<String>? interests;
   final UserSettings? settings;
   final List<String>? favorites;
+  final GoogleTokens? googleTokens;
   final DateTime? createdAt;
   final DateTime? updatedAt;
   final bool? isEmailVerified;
@@ -38,6 +40,7 @@ class User {
     this.interests,
     this.settings,
     this.favorites,
+    this.googleTokens,
     this.createdAt,
     this.updatedAt,
     this.isEmailVerified,
@@ -71,6 +74,10 @@ class User {
           json['favorites'] != null
               ? List<String>.from(json['favorites'])
               : null,
+      googleTokens:
+          json['googleTokens'] != null
+              ? GoogleTokens.fromJson(json['googleTokens'])
+              : null,
       createdAt:
           json['createdAt'] != null
               ? DateTime.tryParse(json['createdAt'])
@@ -100,6 +107,7 @@ class User {
       if (interests != null) 'interests': interests,
       if (settings != null) 'settings': settings!.toJson(),
       if (favorites != null) 'favorites': favorites,
+      if (googleTokens != null) 'googleTokens': googleTokens!.toJson(),
       if (createdAt != null) 'createdAt': createdAt!.toIso8601String(),
       if (updatedAt != null) 'updatedAt': updatedAt!.toIso8601String(),
       if (isEmailVerified != null) 'isEmailVerified': isEmailVerified,
@@ -122,6 +130,7 @@ class User {
     List<String>? interests,
     UserSettings? settings,
     List<String>? favorites,
+    GoogleTokens? googleTokens,
     DateTime? createdAt,
     DateTime? updatedAt,
     bool? isEmailVerified,
@@ -142,13 +151,13 @@ class User {
       interests: interests ?? this.interests,
       settings: settings ?? this.settings,
       favorites: favorites ?? this.favorites,
+      googleTokens: googleTokens ?? this.googleTokens,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       isEmailVerified: isEmailVerified ?? this.isEmailVerified,
     );
   }
 
-  @override
   @override
   String toString() {
     return 'User{id: $id, name: $name, userName: $userName, email: $email, phone: $phone, bio: $bio, updatedAt: $updatedAt}';

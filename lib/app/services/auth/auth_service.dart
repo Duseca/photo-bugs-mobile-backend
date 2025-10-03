@@ -1,3 +1,5 @@
+// ignore_for_file: avoid_print
+
 import 'dart:async';
 import 'dart:convert';
 import 'package:get/get.dart';
@@ -7,6 +9,8 @@ import 'package:photo_bug/app/data/models/api_response.dart';
 import 'package:photo_bug/app/data/models/auth_models.dart' as auth_models;
 import 'package:photo_bug/app/data/configs/api_configs.dart';
 import '../app/app_service.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
 
 class AuthService extends GetxService {
   static AuthService get instance => Get.find<AuthService>();
@@ -61,6 +65,7 @@ class AuthService extends GetxService {
       _appService = Get.find<AppService>();
 
       await _loadStoredAuth();
+      await _initializeGoogleSignIn();
       await _loadOnboardingStatus();
       await _checkInitialAuth();
     } catch (e) {
@@ -378,7 +383,7 @@ class AuthService extends GetxService {
   Future<void> logout() async {
     try {
       _isLoading.value = true;
-
+      await signOutFromSocialProviders();
       // Call API logout endpoint if available
       try {
         await _makeApiRequest(method: 'POST', endpoint: '/api/auth/logout');
@@ -593,5 +598,319 @@ class AuthService extends GetxService {
   /// Check if user has specific role
   bool hasRole(String role) {
     return currentUser?.role == role;
+  }
+
+  //////===================================Social AUTH===================================//////
+  GoogleSignIn? _googleSignIn;
+  bool _isGoogleSignInInitialized = false;
+
+  // Initialize Google Sign-In (call this in your AuthService init method)
+  Future<void> _initializeGoogleSignIn() async {
+    try {
+      _googleSignIn = GoogleSignIn.instance;
+
+      // Initialize with your configuration
+      await _googleSignIn!.initialize(
+        // Optional: Add your serverClientId here if you have one
+        // serverClientId: 'YOUR_SERVER_CLIENT_ID.apps.googleusercontent.com',
+      );
+
+      _isGoogleSignInInitialized = true;
+      print('Google Sign-In initialized successfully');
+    } catch (e) {
+      print('Failed to initialize Google Sign-In: $e');
+      _isGoogleSignInInitialized = false;
+    }
+  }
+
+  // Ensure Google Sign-In is initialized before use
+  Future<void> _ensureGoogleSignInInitialized() async {
+    if (!_isGoogleSignInInitialized || _googleSignIn == null) {
+      await _initializeGoogleSignIn();
+    }
+  }
+
+  // Updated Google Sign In method
+  Future<ApiResponse<auth_models.AuthResponse>> signInWithGoogle() async {
+    try {
+      _isLoading.value = true;
+
+      // Ensure Google Sign-In is initialized
+      await _ensureGoogleSignInInitialized();
+
+      if (!_isGoogleSignInInitialized || _googleSignIn == null) {
+        return ApiResponse<auth_models.AuthResponse>(
+          success: false,
+          error: 'Google Sign-In initialization failed',
+        );
+      }
+
+      GoogleSignInAccount? googleUser;
+
+      try {
+        // First try lightweight authentication (silent sign-in)
+        googleUser = await _googleSignIn!.attemptLightweightAuthentication();
+      } catch (e) {
+        print('Lightweight authentication failed: $e');
+      }
+
+      // If lightweight authentication fails, use interactive sign-in
+      if (googleUser == null) {
+        try {
+          googleUser = await _googleSignIn!.authenticate();
+        } catch (e) {
+          print('Interactive authentication failed: $e');
+          if (e.toString().contains('canceled')) {
+            return ApiResponse<auth_models.AuthResponse>(
+              success: false,
+              error: 'Google sign-in was cancelled',
+            );
+          }
+          return ApiResponse<auth_models.AuthResponse>(
+            success: false,
+            error: 'Google sign-in failed: $e',
+          );
+        }
+      }
+
+      if (googleUser == null) {
+        return ApiResponse<auth_models.AuthResponse>(
+          success: false,
+          error: 'Google sign-in failed - no user returned',
+        );
+      }
+
+      // Create social user info from Google data
+      final socialUserInfo = auth_models.SocialUserInfo.fromGoogleSignIn({
+        'id': googleUser.id,
+        'displayName': googleUser.displayName ?? '',
+        'email': googleUser.email,
+        'photoUrl': googleUser.photoUrl,
+      });
+
+      return await _handleSocialAuth(socialUserInfo);
+    } catch (e) {
+      print('Google sign-in error: $e');
+      return ApiResponse<auth_models.AuthResponse>(
+        success: false,
+        error: 'Google sign-in failed: $e',
+      );
+    } finally {
+      _isLoading.value = false;
+    }
+  }
+
+  // Updated Facebook Sign In method
+  Future<ApiResponse<auth_models.AuthResponse>> signInWithFacebook() async {
+    try {
+      _isLoading.value = true;
+
+      // Start Facebook login with updated API
+      final LoginResult result = await FacebookAuth.instance.login(
+        permissions: ['email', 'public_profile'],
+      );
+
+      if (result.status != LoginStatus.success) {
+        String errorMessage = 'Facebook sign-in failed';
+
+        switch (result.status) {
+          case LoginStatus.cancelled:
+            errorMessage = 'Facebook sign-in was cancelled';
+            break;
+          case LoginStatus.failed:
+            errorMessage = 'Facebook sign-in failed: ${result.message}';
+            break;
+          case LoginStatus.operationInProgress:
+            errorMessage = 'Facebook sign-in is already in progress';
+            break;
+          default:
+            errorMessage = 'Facebook sign-in failed with unknown error';
+        }
+
+        return ApiResponse<auth_models.AuthResponse>(
+          success: false,
+          error: errorMessage,
+        );
+      }
+
+      // Get user data from Facebook with updated API
+      final Map<String, dynamic> userData = await FacebookAuth.instance
+          .getUserData(
+            fields: "name,email,picture.width(200),first_name,last_name",
+          );
+
+      if (userData.isEmpty) {
+        return ApiResponse<auth_models.AuthResponse>(
+          success: false,
+          error: 'Failed to get user data from Facebook',
+        );
+      }
+
+      // Create social user info from Facebook data
+      final socialUserInfo = auth_models.SocialUserInfo.fromFacebookLogin({
+        'id': userData['id'],
+        'name': userData['name'],
+        'email': userData['email'],
+        'first_name': userData['first_name'],
+        'last_name': userData['last_name'],
+        'picture': userData['picture'],
+      });
+
+      return await _handleSocialAuth(socialUserInfo);
+    } catch (e) {
+      print('Facebook sign-in error: $e');
+      return ApiResponse<auth_models.AuthResponse>(
+        success: false,
+        error: 'Facebook sign-in failed: $e',
+      );
+    } finally {
+      _isLoading.value = false;
+    }
+  }
+
+  // Handle social authentication (login or register)
+  Future<ApiResponse<auth_models.AuthResponse>> _handleSocialAuth(
+    auth_models.SocialUserInfo socialUserInfo,
+  ) async {
+    try {
+      // First try to login with existing social account
+      final loginResponse = await _attemptSocialLogin(socialUserInfo);
+
+      if (loginResponse.success) {
+        print('Existing social user logged in successfully');
+        return loginResponse;
+      }
+
+      // If login fails, try to register new social account
+      print('New social user - attempting registration');
+      return await _attemptSocialRegister(socialUserInfo);
+    } catch (e) {
+      return ApiResponse<auth_models.AuthResponse>(
+        success: false,
+        error: 'Social authentication failed: $e',
+      );
+    }
+  }
+
+  // Attempt social login for existing users
+  Future<ApiResponse<auth_models.AuthResponse>> _attemptSocialLogin(
+    auth_models.SocialUserInfo socialUserInfo,
+  ) async {
+    try {
+      final request = auth_models.SocialLoginRequest(
+        socialProvider: socialUserInfo.provider,
+        socialId: socialUserInfo.id,
+        deviceToken: await _getDeviceToken(),
+      );
+
+      final response = await _makeAuthRequest(
+        endpoint: ApiConfig.endpoints.login,
+        data: request.toJson(),
+      );
+
+      if (response.success && response.data != null) {
+        await _handleAuthSuccess(response.data!);
+        print('Social login successful for existing user');
+      }
+
+      return response;
+    } catch (e) {
+      return ApiResponse<auth_models.AuthResponse>(
+        success: false,
+        error: 'Social login failed: $e',
+      );
+    }
+  }
+
+  // Attempt social registration for new users
+  Future<ApiResponse<auth_models.AuthResponse>> _attemptSocialRegister(
+    auth_models.SocialUserInfo socialUserInfo,
+  ) async {
+    try {
+      final request = auth_models.SocialRegisterRequest(
+        name: socialUserInfo.displayName,
+        userName: socialUserInfo.generatedUsername,
+        email: socialUserInfo.email,
+        phone: '+1234567890', // Default phone - will be completed in profile
+        deviceToken: await _getDeviceToken(),
+        role: 'creator',
+        profilePicture: socialUserInfo.profilePicture,
+        socialProvider: socialUserInfo.provider,
+        socialId: socialUserInfo.id,
+      );
+
+      final response = await _makeAuthRequest(
+        endpoint: ApiConfig.endpoints.register,
+        data: request.toJson(),
+      );
+
+      if (response.success && response.data != null) {
+        await _handleAuthSuccess(response.data!);
+        print('Social registration successful - user needs profile completion');
+      }
+
+      return response;
+    } catch (e) {
+      return ApiResponse<auth_models.AuthResponse>(
+        success: false,
+        error: 'Social registration failed: $e',
+      );
+    }
+  }
+
+  // Get device token for push notifications (simplified without Firebase)
+  Future<String?> _getDeviceToken() async {
+    try {
+      // Since you're not using Firebase, return a placeholder or implement your own push notification system
+      // You can replace this with your own device identification logic
+      return 'device_${DateTime.now().millisecondsSinceEpoch}';
+    } catch (e) {
+      print('Error getting device token: $e');
+      return null;
+    }
+  }
+
+  // Check if user needs to complete profile (enhanced for social auth)
+  bool get needsProfileCompletion {
+    if (currentUser == null) return false;
+
+    // Check if essential profile fields are missing or have default values
+    final user = currentUser!;
+
+    return user.phone ==
+            '+1234567890' || // Default phone from social registration
+        user.phone == null ||
+        user.phone!.isEmpty ||
+        user.address == null ||
+        user.interests == null ||
+        user.interests!.isEmpty ||
+        user.gender == null ||
+        user.gender!.isEmpty ||
+        user.dateOfBirth == null;
+  }
+
+  // Sign out from all social providers (updated for latest versions)
+  Future<void> signOutFromSocialProviders() async {
+    try {
+      // Sign out from Google - simplified approach
+      if (_isGoogleSignInInitialized && _googleSignIn != null) {
+        try {
+          await _googleSignIn!.signOut();
+          print('Signed out from Google');
+        } catch (e) {
+          print('Error signing out from Google: $e');
+        }
+      }
+
+      // Sign out from Facebook
+      try {
+        await FacebookAuth.instance.logOut();
+        print('Signed out from Facebook');
+      } catch (e) {
+        print('Error signing out from Facebook: $e');
+      }
+    } catch (e) {
+      print('Error signing out from social providers: $e');
+    }
   }
 }

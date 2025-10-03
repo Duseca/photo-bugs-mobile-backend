@@ -384,3 +384,143 @@ class AuthModelDefaults {
     );
   }
 }
+
+// Social Login Request Model
+class SocialLoginRequest {
+  final String socialProvider; // 'google' or 'facebook'
+  final String socialId;
+  final String? deviceToken;
+
+  SocialLoginRequest({
+    required this.socialProvider,
+    required this.socialId,
+    this.deviceToken,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'socialProvider': socialProvider,
+      'socialId': socialId,
+      if (deviceToken != null) 'device_token': deviceToken,
+    };
+  }
+}
+
+// Social Register Request Model
+class SocialRegisterRequest {
+  final String name;
+  final String userName;
+  final String email;
+  final String phone;
+  final String? deviceToken;
+  final String role;
+  final String? profilePicture;
+  final String socialProvider; // 'google' or 'facebook'
+  final String socialId;
+
+  SocialRegisterRequest({
+    required this.name,
+    required this.userName,
+    required this.email,
+    required this.phone,
+    this.deviceToken,
+    this.role = 'creator',
+    this.profilePicture,
+    required this.socialProvider,
+    required this.socialId,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'user_name': userName,
+      'email': email,
+      'phone': phone,
+      if (deviceToken != null) 'device_token': deviceToken,
+      'role': role,
+      if (profilePicture != null) 'profile_picture': profilePicture,
+      'socialProvider': socialProvider,
+      'socialId': socialId,
+    };
+  }
+}
+
+// Social User Info Model (received from Google/Facebook)
+class SocialUserInfo {
+  final String id;
+  final String name;
+  final String email;
+  final String? profilePicture;
+  final String provider;
+  final String? firstName;
+  final String? lastName;
+
+  SocialUserInfo({
+    required this.id,
+    required this.name,
+    required this.email,
+    this.profilePicture,
+    required this.provider,
+    this.firstName,
+    this.lastName,
+  });
+
+  factory SocialUserInfo.fromGoogleSignIn(Map<String, dynamic> googleUser) {
+    final displayName = googleUser['displayName'] ?? '';
+    final nameParts = displayName.split(' ');
+
+    return SocialUserInfo(
+      id: googleUser['id'] ?? '',
+      name: displayName,
+      email: googleUser['email'] ?? '',
+      profilePicture: googleUser['photoUrl'],
+      provider: 'google',
+      firstName: nameParts.isNotEmpty ? nameParts.first : '',
+      lastName: nameParts.length > 1 ? nameParts.skip(1).join(' ') : '',
+    );
+  }
+
+  factory SocialUserInfo.fromFacebookLogin(Map<String, dynamic> facebookUser) {
+    return SocialUserInfo(
+      id: facebookUser['id'] ?? '',
+      name: facebookUser['name'] ?? '',
+      email: facebookUser['email'] ?? '',
+      profilePicture: facebookUser['picture']?['data']?['url'],
+      provider: 'facebook',
+      firstName: facebookUser['first_name'],
+      lastName: facebookUser['last_name'],
+    );
+  }
+
+  String get displayName {
+    if (name.isNotEmpty) return name;
+    if (firstName != null && firstName!.isNotEmpty) {
+      return lastName != null && lastName!.isNotEmpty
+          ? '$firstName $lastName'
+          : firstName!;
+    }
+    return email.split('@').first;
+  }
+
+  String get generatedUsername {
+    String baseUsername = displayName
+        .toLowerCase()
+        .replaceAll(' ', '_')
+        .replaceAll(RegExp(r'[^a-z0-9_]'), ''); // Remove special characters
+
+    // Ensure minimum length
+    if (baseUsername.length < 3) {
+      baseUsername = email.split('@').first.toLowerCase();
+    }
+
+    String timestamp = DateTime.now().millisecondsSinceEpoch
+        .toString()
+        .substring(8);
+    return '${baseUsername}_$timestamp';
+  }
+
+  @override
+  String toString() {
+    return 'SocialUserInfo{id: $id, name: $name, email: $email, provider: $provider}';
+  }
+}

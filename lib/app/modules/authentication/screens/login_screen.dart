@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import 'package:get/get.dart';
 import 'package:photo_bug/app/core/constants/app_colors.dart';
 import 'package:photo_bug/app/core/constants/app_images.dart';
@@ -20,10 +19,7 @@ class Login extends StatelessWidget {
     final AuthController authController = Get.put(AuthController());
 
     return Scaffold(
-      appBar: authAppBar(
-        haveLeading: false,
-        title: 'Login',
-      ),
+      appBar: authAppBar(haveLeading: false, title: 'Login'),
       body: Form(
         key: authController.loginFormKey,
         child: ListView(
@@ -34,7 +30,7 @@ class Login extends StatelessWidget {
               subTitle:
                   'Login to your account to discover and buy the best photographs effortlessly.',
             ),
-            
+
             // Email Field
             MyTextField(
               label: 'Email Address',
@@ -42,30 +38,32 @@ class Login extends StatelessWidget {
               keyboardType: TextInputType.emailAddress,
               validator: authController.validateEmail,
             ),
-            
+
             // Password Field
-            Obx(() => MyTextField(
-              label: 'Password',
-              controller: authController.passwordController,
-              isObSecure: !authController.isPasswordVisible.value,
-              marginBottom: 16,
-              validator: authController.validatePassword,
-              suffix: GestureDetector(
-                onTap: authController.togglePasswordVisibility,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Image.asset(
-                      authController.isPasswordVisible.value 
-                          ? Assets.imagesUnicon 
-                          : Assets.imagesEye,
-                      height: 18,
-                    ),
-                  ],
+            Obx(
+              () => MyTextField(
+                label: 'Password',
+                controller: authController.passwordController,
+                isObSecure: !authController.isPasswordVisible.value,
+                marginBottom: 16,
+                validator: authController.validatePassword,
+                suffix: GestureDetector(
+                  onTap: authController.togglePasswordVisibility,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Image.asset(
+                        authController.isPasswordVisible.value
+                            ? Assets.imagesUnicon
+                            : Assets.imagesEye,
+                        height: 18,
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            )),
-            
+            ),
+
             // Forgot Password
             MyText(
               text: 'Forgot Password?',
@@ -76,36 +74,40 @@ class Login extends StatelessWidget {
               paddingBottom: 16,
               onTap: authController.goToForgotPassword,
             ),
-            
+
             // Remember Me Checkbox
-            Obx(() => Row(
-              children: [
-                CustomCheckBox(
-                  isActive: authController.rememberMe.value,
-                  onTap: authController.toggleRememberMe,
-                ),
-                Expanded(
-                  child: MyText(
-                    text: 'Remember me',
-                    size: 12,
-                    color: kTertiaryColor,
-                    paddingLeft: 8,
+            Obx(
+              () => Row(
+                children: [
+                  CustomCheckBox(
+                    isActive: authController.rememberMe.value,
+                    onTap: authController.toggleRememberMe,
                   ),
-                ),
-              ],
-            )),
-            
+                  Expanded(
+                    child: MyText(
+                      text: 'Remember me',
+                      size: 12,
+                      color: kTertiaryColor,
+                      paddingLeft: 8,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
             const SizedBox(height: 16),
-            
+
             // Login Button
-            Obx(() => MyButton(
-              buttonText: 'Login',
-              isLoading: authController.isLoading.value,
-              onTap: authController.login,
-            )),
-            
+            Obx(
+              () => MyButton(
+                buttonText: 'Login',
+                isLoading: authController.isLoading.value,
+                onTap: authController.login,
+              ),
+            ),
+
             const SizedBox(height: 16),
-            
+
             // Sign Up Link
             Wrap(
               crossAxisAlignment: WrapCrossAlignment.center,
@@ -125,21 +127,29 @@ class Login extends StatelessWidget {
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             // Divider
             _buildDivider(),
-            
+
             const SizedBox(height: 16),
-            
-            // Social Login
-            Obx(() => SocialLogin(
-              isLoading: authController.isLoading.value,
-              onGoogle:(){},
-              onApple: (){},
-              onFacebook:(){},
-            )),
+
+            // Social Login - Updated with proper integration
+            Obx(
+              () => SocialLogin(
+                isLoading: authController.isSocialLoading.value,
+                onGoogle: authController.signInWithGoogle,
+                onApple: () {
+                  // Apple sign-in not implemented yet
+                  Get.snackbar(
+                    'Coming Soon',
+                    'Apple Sign-In will be available soon!',
+                  );
+                },
+                onFacebook: authController.signInWithFacebook,
+              ),
+            ),
           ],
         ),
       ),
@@ -149,12 +159,7 @@ class Login extends StatelessWidget {
   Widget _buildDivider() {
     return Row(
       children: [
-        Expanded(
-          child: Container(
-            height: 1,
-            color: kInputBorderColor,
-          ),
-        ),
+        Expanded(child: Container(height: 1, color: kInputBorderColor)),
         MyText(
           text: 'or continue with',
           size: 12,
@@ -163,12 +168,7 @@ class Login extends StatelessWidget {
           paddingLeft: 8,
           paddingRight: 8,
         ),
-        Expanded(
-          child: Container(
-            height: 1,
-            color: kInputBorderColor,
-          ),
-        ),
+        Expanded(child: Container(height: 1, color: kInputBorderColor)),
       ],
     );
   }
@@ -177,7 +177,7 @@ class Login extends StatelessWidget {
 class SocialLogin extends StatelessWidget {
   final bool isLoading;
   final VoidCallback onGoogle, onApple, onFacebook;
-  
+
   const SocialLogin({
     super.key,
     required this.isLoading,
@@ -198,21 +198,28 @@ class SocialLogin extends StatelessWidget {
             borderColor: kInputBorderColor,
             splashColor: kSecondaryColor.withOpacity(0.1),
             buttonText: '',
-            isLoading: false,
-            onTap:(){
-              onGoogle();
-            },
+            isLoading: isLoading,
+            onTap: isLoading ? null : onGoogle,
             child: Center(
-              child: Image.asset(
-                Assets.imagesGoogle,
-                height: 20,
-              ),
+              child:
+                  isLoading
+                      ? SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            kSecondaryColor,
+                          ),
+                        ),
+                      )
+                      : Image.asset(Assets.imagesGoogle, height: 20),
             ),
           ),
         ),
-        
+
         const SizedBox(width: 12),
-        
+
         // Apple Login
         Expanded(
           child: MyButton(
@@ -222,18 +229,13 @@ class SocialLogin extends StatelessWidget {
             splashColor: kSecondaryColor.withOpacity(0.1),
             buttonText: '',
             isLoading: false,
-            onTap: onApple,
-            child: Center(
-              child: Image.asset(
-                Assets.imagesApple,
-                height: 20,
-              ),
-            ),
+            onTap: isLoading ? null : onApple,
+            child: Center(child: Image.asset(Assets.imagesApple, height: 20)),
           ),
         ),
-        
+
         const SizedBox(width: 12),
-        
+
         // Facebook Login
         Expanded(
           child: MyButton(
@@ -242,13 +244,22 @@ class SocialLogin extends StatelessWidget {
             borderColor: kInputBorderColor,
             splashColor: kSecondaryColor.withOpacity(0.1),
             buttonText: '',
-            isLoading: false,
-            onTap: onFacebook,
+            isLoading: isLoading,
+            onTap: isLoading ? null : onFacebook,
             child: Center(
-              child: Image.asset(
-                Assets.imagesFacebook,
-                height: 20,
-              ),
+              child:
+                  isLoading
+                      ? SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            kSecondaryColor,
+                          ),
+                        ),
+                      )
+                      : Image.asset(Assets.imagesFacebook, height: 20),
             ),
           ),
         ),
