@@ -48,9 +48,9 @@ class EventService extends GetxService {
       _authService = Get.find<AuthService>();
 
       // Load user events if authenticated
-      if (_authService.isAuthenticated) {
-        await _loadUserEvents();
-      }
+      // if (_authService.isAuthenticated) {
+      //   await _loadUserEvents();
+      // }
 
       // Listen to auth state changes
       _setupAuthListener();
@@ -74,7 +74,7 @@ class EventService extends GetxService {
 
   /// Create a new event
   Future<ApiResponse<Event>> createEvent(CreateEventRequest request) async {
-    print(request.toJson());
+    print(request.toJson().toString() + "json req");
     try {
       _isLoading.value = true;
 
@@ -223,6 +223,10 @@ class EventService extends GetxService {
   Future<ApiResponse<List<Event>>> searchEvents(
     EventSearchParams params,
   ) async {
+    print(params.distance);
+    print(params.type);
+    print(params.role);
+    print(params.location);
     try {
       _isSearching.value = true;
 
@@ -296,7 +300,6 @@ class EventService extends GetxService {
 
       if (response.success && response.data != null) {
         _userCreatedEvents.value = response.data!;
-        print('Loaded ${response.data!.length} created events');
       } else {
         print('Failed to load created events: ${response.error}');
       }

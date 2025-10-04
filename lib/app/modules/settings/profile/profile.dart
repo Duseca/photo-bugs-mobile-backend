@@ -62,6 +62,7 @@ class Profile extends StatelessWidget {
                       // Use user's profile picture from ProfileController
                       Obx(() {
                         final user = profileController.currentUser;
+                        print(user?.toJson());
                         return CommonImageView(
                           url: user?.profilePicture ?? dummyImg,
                           height: 86,
@@ -117,10 +118,7 @@ class Profile extends StatelessWidget {
                 Obx(() {
                   final user = profileController.currentUser;
                   return MyText(
-                    text:
-                        user?.bio?.isNotEmpty == true
-                            ? user!.bio!
-                            : 'I\'m a full-time photographer based in NYC. I shoot portraits, weddings, lifestyle, and events throughout the USA and all over the world. I strive to capture sincere emotions and bring timeless approach to my work.',
+                    text: user?.bio?.isNotEmpty == true ? user!.bio! : '',
                     size: 12,
                     color: kQuaternaryColor,
                     paddingBottom: 16,

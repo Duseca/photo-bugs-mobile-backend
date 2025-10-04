@@ -2,12 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:photo_bug/app/core/constants/app_colors.dart';
 import 'package:photo_bug/app/modules/chat/controller/chat_controllers.dart';
-
 import 'package:photo_bug/app/core/common_widget/chat_head_tile_widget.dart';
 import 'package:photo_bug/app/core/common_widget/my_text_widget.dart';
 
-
-// views/chat_head_screen.dart
 class ChatHeadScreen extends GetView<ChatHeadController> {
   const ChatHeadScreen({super.key});
 
@@ -46,16 +43,24 @@ class ChatHeadScreen extends GetView<ChatHeadController> {
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 16),
             itemCount: chatHeads.length,
             itemBuilder: (context, index) {
-              final chatHead = chatHeads[index];
-              return ChatHeadTile(
-                image: chatHead.image,
-                name: chatHead.name,
-                lastMsg: chatHead.lastMessage,
-                time: _formatTime(chatHead.lastMessageTime),
-                isOnline: chatHead.isOnline,
-                isNewMessage: chatHead.hasNewMessage,
+              final chat = chatHeads[index];
+              final hasUnread = controller.hasUnreadMessages(chat);
+              final unreadCount = controller.getUnreadCount(chat);
 
-                onTap: () => controller.openChat(chatHead),
+              return ChatHeadTile(
+                image: '', // You'll need to fetch user image from user service
+                name:
+                    'User ${chat.participants.first}', // You'll need to fetch actual user name
+                lastMsg: chat.lastMessage?.content ?? 'No messages yet',
+                time: _formatTime(
+                  chat.lastMessage?.createdAt ??
+                      chat.updatedAt ??
+                      chat.createdAt ??
+                      DateTime.now(),
+                ),
+                isOnline: false, // You'll need to implement online status
+                isNewMessage: hasUnread,
+                onTap: () => controller.openChat(chat),
               );
             },
           );
@@ -73,7 +78,7 @@ class ChatHeadScreen extends GetView<ChatHeadController> {
             content: TextField(
               onChanged: controller.onSearchChanged,
               decoration: const InputDecoration(
-                hintText: 'Search by name or message...',
+                hintText: 'Search by message...',
                 prefixIcon: Icon(Icons.search),
               ),
               autofocus: true,

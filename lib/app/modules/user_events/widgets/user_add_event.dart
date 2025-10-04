@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:photo_bug/app/core/constants/app_colors.dart';
 import 'package:photo_bug/app/core/constants/app_images.dart';
@@ -20,7 +21,8 @@ class UserAddEvent extends GetView<UserEventsController> {
   @override
   Widget build(BuildContext context) {
     final nameController = TextEditingController();
-    final locationController = TextEditingController();
+    final longitudeController = TextEditingController();
+    final latitudeController = TextEditingController();
     final dateController = TextEditingController();
     final timeStartController = TextEditingController();
     final timeEndController = TextEditingController();
@@ -31,7 +33,6 @@ class UserAddEvent extends GetView<UserEventsController> {
     final selectedTimeStart = Rx<TimeOfDay?>(null);
     final selectedTimeEnd = Rx<TimeOfDay?>(null);
     final selectedImage = Rx<String?>(null);
-    final selectedLocation = Rx<Location?>(null);
 
     final eventTypes = [
       'Wedding',
@@ -120,20 +121,32 @@ class UserAddEvent extends GetView<UserEventsController> {
                   hint: 'Enter event name',
                 ),
 
-                // Location Field
+                // Latitude Field (First - more intuitive)
                 MyTextField(
-                  label: 'Location',
-                  controller: locationController,
-                  hint: 'Enter location',
-                  readOnly: true,
-                  onTap: () async {
-                    // TODO: Implement location picker
-                    Get.snackbar(
-                      'Info',
-                      'Location picker will be implemented',
-                      snackPosition: SnackPosition.BOTTOM,
-                    );
-                  },
+                  label: 'Latitude',
+                  controller: latitudeController,
+                  hint: 'Enter latitude (e.g., 33.6844)',
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                    signed: true,
+                  ),
+
+                  suffix: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [Image.asset(Assets.imagesLocation, height: 18)],
+                  ),
+                ),
+
+                // Longitude Field (Second)
+                MyTextField(
+                  label: 'Longitude',
+                  controller: longitudeController,
+                  hint: 'Enter longitude (e.g., 73.0479)',
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                    signed: true,
+                  ),
+
                   suffix: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [Image.asset(Assets.imagesLocation, height: 18)],
@@ -243,13 +256,14 @@ class UserAddEvent extends GetView<UserEventsController> {
                     () => _handleAddEvent(
                       context,
                       nameController,
+                      longitudeController,
+                      latitudeController,
                       selectedDate,
                       selectedTimeStart,
                       selectedTimeEnd,
                       selectedType,
                       selectedRole,
                       selectedImage,
-                      selectedLocation,
                     ),
               ),
             ),
@@ -262,19 +276,71 @@ class UserAddEvent extends GetView<UserEventsController> {
   void _handleAddEvent(
     BuildContext context,
     TextEditingController nameController,
+    TextEditingController longitudeController,
+    TextEditingController latitudeController,
     Rx<DateTime?> selectedDate,
     Rx<TimeOfDay?> selectedTimeStart,
     Rx<TimeOfDay?> selectedTimeEnd,
     Rx<String?> selectedType,
     Rx<String?> selectedRole,
     Rx<String?> selectedImage,
-    Rx<Location?> selectedLocation,
   ) async {
     // Validation
     if (nameController.text.trim().isEmpty) {
       Get.snackbar(
         'Error',
         'Please enter event name',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+      return;
+    }
+
+    // Validate longitude and latitude
+    if (longitudeController.text.trim().isEmpty ||
+        latitudeController.text.trim().isEmpty) {
+      Get.snackbar(
+        'Error',
+        'Please enter both longitude and latitude',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+      return;
+    }
+
+    // Parse coordinates
+    final longitude = double.tryParse(longitudeController.text.trim());
+    final latitude = double.tryParse(latitudeController.text.trim());
+
+    if (longitude == null || latitude == null) {
+      Get.snackbar(
+        'Error',
+        'Please enter valid longitude and latitude values',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+      return;
+    }
+
+    // Validate coordinate ranges
+    if (longitude < -180 || longitude > 180) {
+      Get.snackbar(
+        'Error',
+        'Longitude must be between -180 and 180',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+      return;
+    }
+
+    if (latitude < -90 || latitude > 90) {
+      Get.snackbar(
+        'Error',
+        'Latitude must be between -90 and 90',
         snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.red,
         colorText: Colors.white,
@@ -321,6 +387,9 @@ class UserAddEvent extends GetView<UserEventsController> {
       return;
     }
 
+    // Create Location object with GeoJSON format [longitude, latitude]
+    final location = Location.fromCoordinates(longitude, latitude);
+
     // Create event request
     final request = CreateEventRequest(
       name: nameController.text.trim(),
@@ -331,7 +400,7 @@ class UserAddEvent extends GetView<UserEventsController> {
       type: selectedType.value,
       role: selectedRole.value,
       image: "https://randomuser.me/api/portraits/women/44.jpg",
-      location: selectedLocation.value,
+      location: location,
       matureContent: false,
     );
 

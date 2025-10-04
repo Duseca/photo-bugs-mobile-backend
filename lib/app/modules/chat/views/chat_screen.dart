@@ -11,7 +11,6 @@ import 'package:photo_bug/app/core/common_widget/my_button_widget.dart';
 import 'package:photo_bug/app/core/common_widget/my_text_widget.dart';
 import 'package:photo_bug/app/core/common_widget/send_field_widget.dart';
 
-
 class ChatScreen extends GetView<ChatController> {
   const ChatScreen({super.key});
 
@@ -21,10 +20,7 @@ class ChatScreen extends GetView<ChatController> {
       appBar: _buildAppBar(),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(child: _buildMessageList()),
-          _buildMessageInput(),
-        ],
+        children: [Expanded(child: _buildMessageList()), _buildMessageInput()],
       ),
     );
   }
@@ -42,12 +38,7 @@ class ChatScreen extends GetView<ChatController> {
               onTap: () => Get.back(),
               splashColor: kSecondaryColor.withOpacity(0.1),
               radius: 100,
-              child: Center(
-                child: Image.asset(
-                  Assets.imagesBack,
-                  height: 12,
-                ),
-              ),
+              child: Center(child: Image.asset(Assets.imagesBack, height: 12)),
             ),
           ),
         ],
@@ -58,24 +49,29 @@ class ChatScreen extends GetView<ChatController> {
             onTap: () => Get.to(() => const OtherUserProfile()),
             child: Stack(
               children: [
-                Obx(() => CommonImageView(
-                  url: controller.otherUserImage.value,
-                  height: 36,
-                  width: 36,
-                  radius: 100,
-                  borderWidth: 1.5,
-                  borderColor: kInputBorderColor,
-                )),
-                Obx(() => controller.otherUserOnline.value
-                    ? Positioned(
-                        bottom: 2,
-                        right: 2,
-                        child: Image.asset(
-                          Assets.imagesOnlineIndicator,
-                          height: 6,
-                        ),
-                      )
-                    : const SizedBox.shrink()),
+                Obx(
+                  () => CommonImageView(
+                    url: controller.otherUserImage.value,
+                    height: 36,
+                    width: 36,
+                    radius: 100,
+                    borderWidth: 1.5,
+                    borderColor: kInputBorderColor,
+                  ),
+                ),
+                Obx(
+                  () =>
+                      controller.otherUserOnline.value
+                          ? Positioned(
+                            bottom: 2,
+                            right: 2,
+                            child: Image.asset(
+                              Assets.imagesOnlineIndicator,
+                              height: 6,
+                            ),
+                          )
+                          : const SizedBox.shrink(),
+                ),
               ],
             ),
           ),
@@ -84,27 +80,29 @@ class ChatScreen extends GetView<ChatController> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Obx(() => MyText(
-                  text: controller.otherUserName.value,
-                  size: 14,
-                  color: kTertiaryColor,
-                  weight: FontWeight.w600,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  paddingBottom: 4,
-                )),
-                Obx(() => MyText(
-                  text: controller.otherUserOnline.value ? 'Online' : 'Offline',
-                  size: 12,
-                  color: kQuaternaryColor,
-                )),
+                Obx(
+                  () => MyText(
+                    text: controller.otherUserName.value,
+                    size: 14,
+                    color: kTertiaryColor,
+                    weight: FontWeight.w600,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    paddingBottom: 4,
+                  ),
+                ),
+                Obx(
+                  () => MyText(
+                    text:
+                        controller.otherUserOnline.value ? 'Online' : 'Offline',
+                    size: 12,
+                    color: kQuaternaryColor,
+                  ),
+                ),
               ],
             ),
           ),
-          Image.asset(
-            Assets.imagesMenuVertical,
-            height: 20,
-          ),
+          Image.asset(Assets.imagesMenuVertical, height: 20),
           const SizedBox(width: 20),
         ],
       ),
@@ -126,15 +124,16 @@ class ChatScreen extends GetView<ChatController> {
       return ListView.builder(
         controller: controller.scrollController,
         padding: AppSizes.DEFAULT,
-        reverse: true,
         itemCount: controller.messages.length + 1, // +1 for date header
         itemBuilder: (context, index) {
-          if (index == controller.messages.length) {
-            // Date header
+          if (index == 0) {
+            // Date header at top
             return MyText(
-              text: _formatDateHeader(controller.messages.isNotEmpty 
-                  ? controller.messages.first.timestamp 
-                  : DateTime.now()),
+              text: _formatDateHeader(
+                controller.messages.isNotEmpty
+                    ? controller.messages.first.createdAt ?? DateTime.now()
+                    : DateTime.now(),
+              ),
               size: 12,
               color: kQuaternaryColor,
               textAlign: TextAlign.center,
@@ -142,12 +141,17 @@ class ChatScreen extends GetView<ChatController> {
             );
           }
 
-          final message = controller.messages[index];
+          final message = controller.messages[index - 1];
+          final isMe = controller.isMyMessage(message);
+
           return CustomChatBubbles(
-            isMe: message.isMe,
-            profileImage: message.senderImage,
-            name: message.senderName,
-            msg: message.message,
+            isMe: isMe,
+            profileImage:
+                isMe
+                    ? controller.otherUserImage.value
+                    : controller.otherUserImage.value,
+            name: isMe ? 'You' : controller.otherUserName.value,
+            msg: message.content,
           );
         },
       );
@@ -183,7 +187,10 @@ class ChatScreen extends GetView<ChatController> {
   }
 
   String _formatTime(DateTime dateTime) {
-    final hour = dateTime.hour == 0 ? 12 : (dateTime.hour > 12 ? dateTime.hour - 12 : dateTime.hour);
+    final hour =
+        dateTime.hour == 0
+            ? 12
+            : (dateTime.hour > 12 ? dateTime.hour - 12 : dateTime.hour);
     final minute = dateTime.minute.toString().padLeft(2, '0');
     final period = dateTime.hour < 12 ? 'AM' : 'PM';
     return '$hour:$minute$period';
@@ -191,10 +198,19 @@ class ChatScreen extends GetView<ChatController> {
 
   String _getMonthName(int month) {
     const months = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
     ];
     return months[month - 1];
   }
 }
-

@@ -345,7 +345,7 @@ class CreateEventRequest {
       'name': name,
       if (photographerId != null) 'photographer': photographerId,
       if (image != null) 'image': image,
-      if (location != null) 'location': location!.coordinates,
+      if (location != null) 'location': location!.toJson(),
       if (date != null) 'date': date!.toIso8601String(),
       if (timeStart != null) 'time_start': timeStart,
       if (timeEnd != null) 'time_end': timeEnd,

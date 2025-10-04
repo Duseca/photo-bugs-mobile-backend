@@ -4,6 +4,8 @@ import 'package:photo_bug/app/core/constants/app_colors.dart';
 import 'package:photo_bug/app/core/constants/app_fonts.dart';
 import 'package:photo_bug/app/core/constants/app_images.dart';
 import 'package:photo_bug/app/core/constants/app_sizes.dart';
+import 'package:photo_bug/app/data/models/event_model.dart';
+import 'package:photo_bug/app/data/models/location_model.dart';
 import 'package:photo_bug/app/modules/search/controller/search_controller.dart';
 import 'package:photo_bug/app/core/common_widget/common_image_view_widget.dart';
 import 'package:photo_bug/app/core/common_widget/custom_bottom_sheet_widget.dart';
@@ -22,9 +24,12 @@ class SearchScreen extends GetView<SearchController> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: simpleAppBar(title: 'Search'),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [_buildSearchBar(), Expanded(child: _buildSearchResults())],
+      body: RefreshIndicator(
+        onRefresh: controller.refreshResults,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [_buildSearchBar(), Expanded(child: _buildSearchResults())],
+        ),
       ),
     );
   }
@@ -33,9 +38,9 @@ class SearchScreen extends GetView<SearchController> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       child: MyTextField(
-        hint: 'Search',
+        hint: 'Search events...',
         controller: controller.searchTextController,
-        textInputAction: TextInputAction.done,
+        textInputAction: TextInputAction.search,
         marginBottom: 0,
         prefix: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -75,11 +80,13 @@ class SearchScreen extends GetView<SearchController> {
     return Row(
       children: [
         Expanded(
-          child: MyText(
-            text: controller.resultsText,
-            size: 13,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          child: Obx(
+            () => MyText(
+              text: controller.resultsText,
+              size: 13,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ),
         Wrap(
@@ -109,26 +116,39 @@ class SearchScreen extends GetView<SearchController> {
 
   Widget _buildResultsList() {
     return Obx(() {
+      if (controller.isSearching.value) {
+        return const Center(
+          child: Padding(
+            padding: EdgeInsets.all(20),
+            child: CircularProgressIndicator(),
+          ),
+        );
+      }
+
       if (controller.searchResults.isEmpty) {
         return Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.search_off, size: 64, color: Colors.grey),
-              SizedBox(height: 16),
-              MyText(
-                text: 'No results found',
-                size: 18,
-                weight: FontWeight.w600,
-                color: Colors.grey,
-              ),
-              SizedBox(height: 8),
-              MyText(
-                text: 'Try adjusting your search or filters',
-                size: 14,
-                color: Colors.grey,
-              ),
-            ],
+          child: Padding(
+            padding: const EdgeInsets.all(40),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.search_off, size: 64, color: Colors.grey.shade400),
+                const SizedBox(height: 16),
+                MyText(
+                  text: 'No events found',
+                  size: 18,
+                  weight: FontWeight.w600,
+                  color: Colors.grey.shade600,
+                ),
+                const SizedBox(height: 8),
+                MyText(
+                  text: 'Try adjusting your search or filters',
+                  size: 14,
+                  color: Colors.grey.shade500,
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
           ),
         );
       }
@@ -139,37 +159,92 @@ class SearchScreen extends GetView<SearchController> {
         physics: const NeverScrollableScrollPhysics(),
         itemCount: controller.searchResults.length,
         itemBuilder: (context, index) {
-          final result = controller.searchResults[index];
-          return _buildResultItem(result);
+          final event = controller.searchResults[index];
+          return _buildResultItem(event);
         },
       );
     });
   }
 
-  Widget _buildResultItem(Map<String, dynamic> result) {
+  Widget _buildResultItem(Event event) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: GestureDetector(
-        onTap: () => controller.navigateToSearchDetails(result),
+        onTap: () => controller.navigateToSearchDetails(event),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Event Image
             CommonImageView(
-              imagePath: Assets.imagesEventImage,
+              imagePath: event.image ?? Assets.imagesEventImage,
               height: 180,
               radius: 8,
             ),
             const SizedBox(height: 8),
+
+            // Event Info
             Row(
               children: [
                 Expanded(
-                  child: MyText(
-                    text: result['title'],
-                    weight: FontWeight.w500,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Event Name
+                      MyText(
+                        text: event.name,
+                        weight: FontWeight.w500,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+
+                      // Date
+                      if (event.date != null)
+                        MyText(
+                          text: _formatDate(event.date!),
+                          size: 12,
+                          color: kQuaternaryColor,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      const SizedBox(height: 2),
+
+                      // Location
+                      if (event.location != null)
+                        Row(
+                          children: [
+                            Image.asset(Assets.imagesLocation, height: 12),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: MyText(
+                                text: _formatLocation(event.location!),
+                                size: 11,
+                                color: kQuaternaryColor,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+
+                      // Type & Role Badges
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: [
+                            if (event.type != null && event.type!.isNotEmpty)
+                              _buildBadge(event.type!, kSecondaryColor),
+                            if (event.role != null && event.role!.isNotEmpty)
+                              _buildBadge(event.role!, kPrimaryColor),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+                const SizedBox(width: 8),
                 Image.asset(Assets.imagesMenuHorizontal, height: 20),
               ],
             ),
@@ -177,6 +252,45 @@ class SearchScreen extends GetView<SearchController> {
         ),
       ),
     );
+  }
+
+  Widget _buildBadge(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: MyText(
+        text: text,
+        size: 10,
+        color: color,
+        weight: FontWeight.w500,
+      ),
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${date.day} ${months[date.month - 1]}, ${date.year}';
+  }
+
+  String _formatLocation(Location location) {
+    // Format coordinates as "Lat: X.XX, Lng: Y.YY"
+    return 'Lat: ${location.latitude.toStringAsFixed(2)}, Lng: ${location.longitude.toStringAsFixed(2)}';
   }
 
   void _showFilterBottomSheet() {
@@ -189,6 +303,7 @@ class SearchScreen extends GetView<SearchController> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Header
           Padding(
             padding: const EdgeInsets.only(left: 20, right: 20, bottom: 10),
             child: Row(
@@ -203,15 +318,16 @@ class SearchScreen extends GetView<SearchController> {
                   ),
                 ),
                 MyText(
-                  text: 'Cancel',
+                  text: 'Clear',
                   weight: FontWeight.w500,
-                  onTap: () {
-                    Get.back();
-                  },
+                  color: kSecondaryColor,
+                  onTap: controller.clearFilters,
                 ),
               ],
             ),
           ),
+
+          // Filter Options
           Expanded(
             child: ListView(
               padding: AppSizes.VERTICAL,
@@ -221,9 +337,13 @@ class SearchScreen extends GetView<SearchController> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      MyTextField(label: 'Username'),
+                      // Location Filter
                       MyTextField(
                         label: 'Location',
+                        controller: controller.locationController,
+                        onChanged: (value) {
+                          controller.locationFilter.value = value;
+                        },
                         suffix: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -231,48 +351,79 @@ class SearchScreen extends GetView<SearchController> {
                           ],
                         ),
                       ),
-                      CustomDropDown(
-                        hint: 'Search Type',
-                        selectedValue: null,
-                        items: ['Creator', 'Event'],
-                        onChanged: (v) {},
+
+                      // Event Type Filter
+                      Obx(
+                        () => CustomDropDown(
+                          hint: 'Event Type',
+                          selectedValue:
+                              controller.typeFilter.value.isEmpty
+                                  ? null
+                                  : controller.typeFilter.value,
+                          items: controller.typeOptions,
+                          onChanged:
+                              (value) =>
+                                  controller.setTypeFilter(value as String?),
+                        ),
                       ),
-                      CustomDropDown(
-                        hint: 'Role',
-                        selectedValue: null,
-                        items: [],
-                        onChanged: (v) {},
+
+                      // Role Filter
+                      Obx(
+                        () => CustomDropDown(
+                          hint: 'Role',
+                          selectedValue:
+                              controller.roleFilter.value.isEmpty
+                                  ? null
+                                  : controller.roleFilter.value,
+                          items: controller.roleOptions,
+                          onChanged:
+                              (value) =>
+                                  controller.setRoleFilter(value as String?),
+                        ),
                       ),
+
+                      // Radius Slider
                       MyText(
                         text: 'Radius (km)',
                         size: 12,
                         color: kQuaternaryColor,
                         weight: FontWeight.w500,
                       ),
-                      SfRangeSliderTheme(
-                        data: SfRangeSliderThemeData(
-                          activeTrackHeight: 6,
-                          inactiveTrackHeight: 6,
-                          thumbColor: kSecondaryColor,
-                          activeTrackColor: kSecondaryColor,
-                          inactiveTrackColor: kInputBorderColor,
-                          tooltipBackgroundColor: kSecondaryColor,
-                          tooltipTextStyle: TextStyle(
-                            fontSize: 12,
-                            color: kTertiaryColor,
-                            fontWeight: FontWeight.w500,
-                            fontFamily: AppFonts.inter,
+                      Obx(
+                        () => SfRangeSliderTheme(
+                          data: SfRangeSliderThemeData(
+                            activeTrackHeight: 6,
+                            inactiveTrackHeight: 6,
+                            thumbColor: kSecondaryColor,
+                            activeTrackColor: kSecondaryColor,
+                            inactiveTrackColor: kInputBorderColor,
+                            tooltipBackgroundColor: kSecondaryColor,
+                            tooltipTextStyle: TextStyle(
+                              fontSize: 12,
+                              color: kTertiaryColor,
+                              fontWeight: FontWeight.w500,
+                              fontFamily: AppFonts.inter,
+                            ),
+                          ),
+                          child: SfRangeSlider(
+                            min: 0.0,
+                            max: 30.0,
+                            values: SfRangeValues(
+                              controller.radiusRange.value.start,
+                              controller.radiusRange.value.end,
+                            ),
+                            onChanged: (dynamic value) {
+                              controller.setRadiusRange(
+                                RangeValues(value.start, value.end),
+                              );
+                            },
+                            trackShape: _SfTrackShape(),
+                            enableTooltip: true,
                           ),
                         ),
-                        child: SfRangeSlider(
-                          min: 0.0,
-                          max: 30.0,
-                          values: SfRangeValues(0, 15),
-                          onChanged: (dynamic value) {},
-                          trackShape: _SfTrackShape(),
-                          enableTooltip: true,
-                        ),
                       ),
+
+                      // Ratings Filter
                       MyText(
                         text: 'Ratings',
                         size: 12,
@@ -283,37 +434,42 @@ class SearchScreen extends GetView<SearchController> {
                     ],
                   ),
                 ),
+
+                // Rating Buttons
                 SizedBox(
                   height: 34,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    padding: EdgeInsets.symmetric(horizontal: 12),
-                    itemCount: 6,
-                    itemBuilder: (BuildContext context, int index) {
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        child: IntrinsicWidth(
-                          child: _RatingToggleButton(
-                            text: index == 0 ? 'All' : '$index',
-                            haveStar: index == 0 ? false : true,
-                            isSelected: index == 0,
-                            onTap: () {},
+                  child: Obx(
+                    () => ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      itemCount: 6,
+                      itemBuilder: (BuildContext context, int index) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          child: IntrinsicWidth(
+                            child: _RatingToggleButton(
+                              text: index == 0 ? 'All' : '$index',
+                              haveStar: index != 0,
+                              isSelected:
+                                  controller.selectedRating.value == index,
+                              onTap: () => controller.setSelectedRating(index),
+                            ),
                           ),
-                        ),
-                      );
-                    },
+                        );
+                      },
+                    ),
                   ),
                 ),
               ],
             ),
           ),
+
+          // Apply Button
           Padding(
             padding: AppSizes.DEFAULT,
             child: MyButton(
               buttonText: 'Apply',
-              onTap: () {
-                Get.back();
-              },
+              onTap: controller.applyFilters,
             ),
           ),
         ],
@@ -322,13 +478,14 @@ class SearchScreen extends GetView<SearchController> {
   }
 }
 
+// Rating Toggle Button Widget
 class _RatingToggleButton extends StatelessWidget {
   final String text;
   final bool isSelected;
-  final bool? haveStar;
+  final bool haveStar;
   final VoidCallback onTap;
+
   const _RatingToggleButton({
-    super.key,
     required this.text,
     required this.isSelected,
     this.haveStar = true,
@@ -339,7 +496,7 @@ class _RatingToggleButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return AnimatedContainer(
       height: 34,
-      duration: 220.milliseconds,
+      duration: const Duration(milliseconds: 220),
       decoration: BoxDecoration(
         color: isSelected ? kSecondaryColor : Colors.transparent,
         borderRadius: BorderRadius.circular(50),
@@ -354,19 +511,18 @@ class _RatingToggleButton extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              haveStar!
-                  ? Image.asset(
-                    Assets.imagesStar,
-                    height: 15,
-                    color: isSelected ? kTertiaryColor : kInputBorderColor,
-                  )
-                  : SizedBox(),
+              if (haveStar)
+                Image.asset(
+                  Assets.imagesStar,
+                  height: 15,
+                  color: isSelected ? kTertiaryColor : kInputBorderColor,
+                ),
               Flexible(
                 child: MyText(
                   text: text,
                   size: 12,
                   color: isSelected ? kTertiaryColor : kQuaternaryColor,
-                  paddingLeft: haveStar! ? 4 : 0,
+                  paddingLeft: haveStar ? 4 : 0,
                 ),
               ),
             ],
@@ -377,6 +533,7 @@ class _RatingToggleButton extends StatelessWidget {
   }
 }
 
+// Custom Track Shape for Slider
 class _SfTrackShape extends SfTrackShape {
   @override
   Rect getPreferredRect(
