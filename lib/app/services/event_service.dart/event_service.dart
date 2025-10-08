@@ -53,7 +53,7 @@ class EventService extends GetxService {
       // }
 
       // Listen to auth state changes
-      _setupAuthListener();
+      // _setupAuthListener();
     } catch (e) {
       print('EventService initialization error: $e');
     }
@@ -74,7 +74,6 @@ class EventService extends GetxService {
 
   /// Create a new event
   Future<ApiResponse<Event>> createEvent(CreateEventRequest request) async {
-    print(request.toJson().toString() + "json req");
     try {
       _isLoading.value = true;
 
