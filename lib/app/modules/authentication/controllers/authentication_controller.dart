@@ -9,7 +9,6 @@ import 'package:photo_bug/app/services/auth/auth_service.dart';
 import 'package:photo_bug/app/data/models/auth_models.dart' as auth_models;
 
 class AuthController extends GetxController {
-  // Get AuthService instance
   final AuthService _authService = AuthService.instance;
   final isSocialLoading = false.obs;
 
@@ -46,7 +45,7 @@ class AuthController extends GetxController {
   final isConfirmPasswordVisible = false.obs;
 
   // Social auth state
-  final isFromSocialAuth = false.obs; // Track if user came from social auth
+  final isFromSocialAuth = false.obs;
   final socialUserInfo = Rxn<auth_models.SocialUserInfo>();
 
   // OTP Timer
@@ -86,7 +85,6 @@ class AuthController extends GetxController {
 
   @override
   void onClose() {
-    // Don't dispose controllers here since we want them to persist
     super.onClose();
   }
 
@@ -94,8 +92,18 @@ class AuthController extends GetxController {
   void _listenToAuthState() {
     _authService.authStateStream.listen((bool authenticated) {
       if (authenticated) {
-        // User successfully authenticated, navigate to home
-        Get.offAllNamed(Routes.BOTTOM_NAV_BAR);
+        // ✅ CHANGE: Check profile completion first
+        Future.delayed(const Duration(milliseconds: 800), () {
+          if (_authService.needsProfileCompletion) {
+            print('📝 Profile incomplete - navigating to complete profile');
+
+            Get.offAndToNamed(Routes.COMPLETE_PROFILE);
+          } else {
+            print('✅ Profile complete - checking Google Drive');
+            checkAndPromptGoogleDrive();
+            Get.offAllNamed(Routes.BOTTOM_NAV_BAR);
+          }
+        });
       }
     });
   }
@@ -177,87 +185,6 @@ class AuthController extends GetxController {
     return selectedInterests.contains(interest);
   }
 
-  // ==================== SOCIAL AUTHENTICATION ====================
-
-  /// Google Sign In
-
-  /// Google Sign In (Updated for v7.x)
-  Future<void> signInWithGoogle() async {
-    try {
-      isSocialLoading.value = true;
-
-      final response = await _authService.signInWithGoogle();
-
-      if (response.success) {
-        _showSuccessSnackbar('Google sign-in successful!');
-        // Navigation handled by auth state listener in _listenToAuthState()
-      } else {
-        _showErrorSnackbar(response.error ?? 'Google sign-in failed');
-      }
-    } catch (e) {
-      _showErrorSnackbar('Google sign-in failed: $e');
-      print('Google sign-in error in controller: $e');
-    } finally {
-      isSocialLoading.value = false;
-    }
-  }
-
-  /// Facebook Sign In (Updated for v7.x)
-  Future<void> signInWithFacebook() async {
-    try {
-      isSocialLoading.value = true;
-
-      final response = await _authService.signInWithFacebook();
-
-      if (response.success) {
-        _showSuccessSnackbar('Facebook sign-in successful!');
-        // Navigation handled by auth state listener in _listenToAuthState()
-      } else {
-        _showErrorSnackbar(response.error ?? 'Facebook sign-in failed');
-      }
-    } catch (e) {
-      _showErrorSnackbar('Facebook sign-in failed: $e');
-      print('Facebook sign-in error in controller: $e');
-    } finally {
-      isSocialLoading.value = false;
-    }
-  }
-
-  /// Check if current user is from social auth and needs profile completion
-  bool get needsProfileCompletion => _authService.needsProfileCompletion;
-
-  /// Pre-fill profile form with social auth data
-  void prefillSocialData() {
-    if (_authService.currentUser != null) {
-      final user = _authService.currentUser!;
-
-      // Pre-fill name fields
-      final nameParts = user.name.split(' ');
-      if (nameParts.isNotEmpty) {
-        firstNameController.text = nameParts.first;
-        if (nameParts.length > 1) {
-          lastNameController.text = nameParts.skip(1).join(' ');
-        }
-      }
-
-      // Pre-fill other fields
-      usernameController.text = user.userName;
-      emailController.text = user.email;
-
-      // Only set phone if it's not the default
-      if (user.phone != null && user.phone != '+1234567890') {
-        phoneController.text = user.phone!;
-      }
-
-      // Pre-fill bio if available
-      if (user.bio != null && user.bio!.isNotEmpty) {
-        bioController.text = user.bio!;
-      }
-
-      print('Social data pre-filled for user: ${user.name}');
-    }
-  }
-
   // Date picker
   void selectDateOfBirth(DateTime date) {
     selectedDateOfBirth.value = date;
@@ -285,9 +212,223 @@ class AuthController extends GetxController {
     });
   }
 
-  // ==================== NEW AUTHENTICATION FLOW ====================
+  // ==================== SOCIAL AUTHENTICATION ====================
 
-  /// Step 1: Validate signup form and send verification email
+  /// Google Sign In (v7.2.0)
+  Future<void> signInWithGoogle() async {
+    try {
+      isSocialLoading.value = true;
+
+      final response = await _authService.signInWithGoogle();
+
+      if (response.success) {
+        _showSuccessSnackbar('✅ Google sign-in successful!');
+      } else {
+        print('Google sign-in error: ${response.error}');
+        // ✅ ADD: Check if user cancelled
+        if (response.error?.contains('cancel') == true) {
+          _showInfoSnackbar('Sign-in cancelled'); // Friendly message
+        } else {
+          _showErrorSnackbar(response.error ?? 'Google sign-in failed');
+        }
+      }
+    } catch (e) {
+      _showErrorSnackbar('Google sign-in failed: $e');
+      print('Google sign-in error in controller: $e');
+    } finally {
+      isSocialLoading.value = false;
+    }
+  }
+
+  void _showInfoSnackbar(String message) {
+    Get.snackbar(
+      'Info',
+      message,
+      snackPosition: SnackPosition.TOP,
+      backgroundColor: Colors.orange,
+      colorText: Colors.white,
+      duration: const Duration(seconds: 2),
+      icon: const Icon(Icons.info, color: Colors.white),
+    );
+  }
+
+  /// Facebook Sign In
+  Future<void> signInWithFacebook() async {
+    try {
+      isSocialLoading.value = true;
+
+      final response = await _authService.signInWithFacebook();
+
+      if (response.success) {
+        _showSuccessSnackbar('✅ Facebook sign-in successful!');
+        // Navigation handled by auth state listener
+      } else {
+        _showErrorSnackbar(response.error ?? 'Facebook sign-in failed');
+      }
+    } catch (e) {
+      _showErrorSnackbar('Facebook sign-in failed: $e');
+      print('Facebook sign-in error in controller: $e');
+    } finally {
+      isSocialLoading.value = false;
+    }
+  }
+
+  // ==================== GOOGLE DRIVE AUTHORIZATION ====================
+
+  /// Check if Google Drive authorization is needed and prompt
+  Future<void> checkAndPromptGoogleDrive() async {
+    // Only prompt for email/password users who don't have tokens
+    if (_authService.needsGoogleDriveAuth) {
+      await Future.delayed(const Duration(seconds: 1));
+      showGoogleDriveAuthDialog();
+    }
+  }
+
+  /// Show Google Drive authorization dialog
+  void showGoogleDriveAuthDialog() {
+    Get.dialog(
+      AlertDialog(
+        title: Row(
+          children: const [
+            Icon(Icons.cloud, color: Colors.blue),
+            SizedBox(width: 8),
+            Text('Connect Google Drive'),
+          ],
+        ),
+        content: const Text(
+          'Connect your Google Drive to backup and sync your photos securely. '
+          'Would you like to authorize Google Drive access now?',
+        ),
+        actions: [
+          TextButton(onPressed: () => Get.back(), child: const Text('Later')),
+          ElevatedButton(
+            onPressed: () {
+              Get.back();
+              authorizeGoogleDrive();
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+            child: const Text('Connect Now'),
+          ),
+        ],
+      ),
+      barrierDismissible: false,
+    );
+  }
+
+  /// Authorize Google Drive for email/password users
+  Future<void> authorizeGoogleDrive() async {
+    try {
+      isSocialLoading.value = true;
+
+      final response = await _authService.authorizeGoogleDrive();
+
+      if (response.success) {
+        _showSuccessSnackbar('✅ Google Drive connected successfully!');
+      } else {
+        _showErrorSnackbar(
+          response.error ?? 'Google Drive authorization failed',
+        );
+      }
+    } catch (e) {
+      _showErrorSnackbar('Google Drive authorization failed: $e');
+      print('Google Drive auth error: $e');
+    } finally {
+      isSocialLoading.value = false;
+    }
+  }
+
+  /// Disconnect Google Drive
+  Future<void> disconnectGoogleDrive() async {
+    try {
+      isLoading.value = true;
+      await _authService.disconnectGoogleDrive();
+      _showSuccessSnackbar('Google Drive disconnected');
+    } catch (e) {
+      _showErrorSnackbar('Failed to disconnect Google Drive');
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  /// Build Google Drive settings widget
+  Widget buildGoogleDriveSettings() {
+    return Obx(() {
+      final isConnected = _authService.isGoogleDriveConnected;
+      final hasTokens = _authService.currentUser?.googleTokens != null;
+
+      return Card(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: ListTile(
+          leading: Icon(
+            Icons.cloud_circle,
+            color: isConnected ? Colors.green : Colors.grey,
+            size: 40,
+          ),
+          title: const Text(
+            'Google Drive',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          subtitle: Text(
+            isConnected
+                ? '✅ Connected and syncing'
+                : hasTokens
+                ? '⏰ Tokens expired - Tap to reconnect'
+                : '❌ Not connected',
+            style: TextStyle(
+              color:
+                  isConnected
+                      ? Colors.green
+                      : hasTokens
+                      ? Colors.orange
+                      : Colors.grey,
+            ),
+          ),
+          trailing:
+              isConnected
+                  ? IconButton(
+                    icon: const Icon(Icons.logout, color: Colors.red),
+                    onPressed: () => _showDisconnectConfirmation(),
+                  )
+                  : ElevatedButton(
+                    onPressed: authorizeGoogleDrive,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                    ),
+                    child: const Text('Connect'),
+                  ),
+        ),
+      );
+    });
+  }
+
+  void _showDisconnectConfirmation() {
+    Get.dialog(
+      AlertDialog(
+        title: const Text('Disconnect Google Drive?'),
+        content: const Text(
+          'Your photos will no longer sync with Google Drive. '
+          'You can reconnect anytime.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Get.back(), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () {
+              Get.back();
+              disconnectGoogleDrive();
+            },
+            child: const Text(
+              'Disconnect',
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==================== AUTHENTICATION FLOW ====================
+
+  /// Step 1: Initiate signup
   Future<void> initiateSignup() async {
     if (!signUpFormKey.currentState!.validate()) return;
     if (!agreeToTerms.value) {
@@ -298,7 +439,6 @@ class AuthController extends GetxController {
     try {
       isLoading.value = true;
 
-      // Store the email for verification
       verificationEmail.value = emailController.text.trim();
 
       final response = await _authService.sendVerificationEmail(
@@ -306,8 +446,7 @@ class AuthController extends GetxController {
       );
 
       if (response.success) {
-        _showSuccessSnackbar('Verification code sent to your email!');
-        // Navigate to OTP verification screen
+        _showSuccessSnackbar('📧 Verification code sent to your email!');
         Get.to(() => const OtpVerification());
         startOTPTimer();
       } else {
@@ -322,7 +461,7 @@ class AuthController extends GetxController {
     }
   }
 
-  /// Step 2: Verify email with OTP code
+  /// Step 2: Verify email code
   Future<void> verifyEmailCode() async {
     if (otpController.text.length != 6) {
       _showErrorSnackbar('Please enter a valid 6-digit OTP');
@@ -339,8 +478,7 @@ class AuthController extends GetxController {
 
       if (response.success) {
         isEmailVerified.value = true;
-        _showSuccessSnackbar('Email verified successfully!');
-        // Don't navigate here - let the calling method handle navigation
+        _showSuccessSnackbar('✅ Email verified successfully!');
       } else {
         _showErrorSnackbar(response.error ?? 'Email verification failed');
       }
@@ -351,7 +489,7 @@ class AuthController extends GetxController {
     }
   }
 
-  /// Step 3: Complete registration (called after email verification)
+  /// Step 3: Complete registration
   Future<void> completeRegistration() async {
     try {
       isLoading.value = true;
@@ -359,23 +497,20 @@ class AuthController extends GetxController {
       final request = auth_models.RegisterRequest(
         name:
             '${firstNameController.text.trim()} ${lastNameController.text.trim()}',
-        userName: _generateUsername(), // Generate a temporary username
-        email: verificationEmail.value, // Use verified email
+        userName: _generateUsername(),
+        email: verificationEmail.value,
         password: passwordController.text,
-        phone: '12344432', // Will be filled in profile completion
-        profilePicture:
-            'https:/jhhdhdhdh', // Set default or allow user to upload
-        deviceToken: '', // Set from device
-        stripeAccountId: '', // Set later if needed
-        role: 'creator', // Default role
-        gender: 'male', // Default, will be updated in profile completion
-        dob: DateTime.now().subtract(
-          Duration(days: 365 * 18),
-        ), // Default 18 years old
+        phone: '12344432',
+        profilePicture: 'https://via.placeholder.com/150',
+        deviceToken: '',
+        stripeAccountId: '',
+        role: 'creator',
+        gender: 'male',
+        dob: DateTime.now().subtract(const Duration(days: 365 * 18)),
         address: {'country': '', 'town': '', 'address': ''},
         location: {
           'coordinates': [0.0, 0.0],
-        }, // Set from location service
+        },
         bio: '',
         interests: [],
         settings: {
@@ -391,8 +526,7 @@ class AuthController extends GetxController {
       final response = await _authService.register(request);
 
       if (response.success) {
-        _showSuccessSnackbar('Registration successful!');
-        // Navigate to complete profile screen
+        _showSuccessSnackbar('✅ Registration successful!');
         Get.offAll(() => const CompleteProfile());
       } else {
         _showErrorSnackbar(response.error ?? 'Registration failed');
@@ -404,7 +538,6 @@ class AuthController extends GetxController {
     }
   }
 
-  // Helper method to generate temporary username
   String _generateUsername() {
     String firstName = firstNameController.text.trim().toLowerCase();
     String lastName = lastNameController.text.trim().toLowerCase();
@@ -429,9 +562,13 @@ class AuthController extends GetxController {
       final response = await _authService.login(request);
 
       if (response.success) {
-        _showSuccessSnackbar('Login successful!');
-        // Navigation will be handled by auth state listener
+        _showSuccessSnackbar('✅ Login successful!');
+        // Check Google Drive after a moment
+        Future.delayed(const Duration(milliseconds: 800), () {
+          checkAndPromptGoogleDrive();
+        });
       } else {
+        print('Login error: ${response.error}');
         _showErrorSnackbar(response.error ?? 'Login failed');
       }
     } catch (e) {
@@ -453,7 +590,7 @@ class AuthController extends GetxController {
       );
 
       if (response.success) {
-        _showSuccessSnackbar('New verification code sent!');
+        _showSuccessSnackbar('📧 New verification code sent!');
         startOTPTimer();
       } else {
         _showErrorSnackbar(response.error ?? 'Failed to resend code');
@@ -466,6 +603,35 @@ class AuthController extends GetxController {
   }
 
   // ==================== PROFILE COMPLETION ====================
+
+  bool get needsProfileCompletion => _authService.needsProfileCompletion;
+
+  void prefillSocialData() {
+    if (_authService.currentUser != null) {
+      final user = _authService.currentUser!;
+
+      final nameParts = user.name.split(' ');
+      if (nameParts.isNotEmpty) {
+        firstNameController.text = nameParts.first;
+        if (nameParts.length > 1) {
+          lastNameController.text = nameParts.skip(1).join(' ');
+        }
+      }
+
+      usernameController.text = user.userName;
+      emailController.text = user.email;
+
+      if (user.phone != null && user.phone != '+1234567890') {
+        phoneController.text = user.phone!;
+      }
+
+      if (user.bio != null && user.bio!.isNotEmpty) {
+        bioController.text = user.bio!;
+      }
+
+      print('Social data pre-filled for user: ${user.name}');
+    }
+  }
 
   Future<void> completeProfile() async {
     if (!completeProfileFormKey.currentState!.validate()) return;
@@ -491,8 +657,7 @@ class AuthController extends GetxController {
       final response = await _authService.updateUser(userData);
 
       if (response.success) {
-        _showSuccessSnackbar('Profile updated successfully!');
-        // Navigate to select interests
+        _showSuccessSnackbar('✅ Profile updated successfully!');
         Get.to(() => SelectInterest());
       } else {
         _showErrorSnackbar(response.error ?? 'Profile update failed');
@@ -513,8 +678,7 @@ class AuthController extends GetxController {
       final response = await _authService.updateUser(interestData);
 
       if (response.success) {
-        _showSuccessSnackbar('Registration completed successfully!');
-        // Navigate to home
+        _showSuccessSnackbar('✅ Registration completed successfully!');
         Get.offAllNamed(Routes.BOTTOM_NAV_BAR);
       } else {
         _showErrorSnackbar(response.error ?? 'Failed to save interests');
@@ -526,23 +690,18 @@ class AuthController extends GetxController {
     }
   }
 
-  // ==================== LOGOUT - FIXED VERSION ====================
+  // ==================== LOGOUT ====================
 
-  /// Logout user and clear all data
   Future<void> logout() async {
     try {
       isLoading.value = true;
 
-      // Call the AuthService logout method
       await _authService.logout();
 
-      // Clear form data but keep controllers alive
       _clearAllData();
 
-      // Show success message
-      _showSuccessSnackbar('Logged out successfully');
+      _showSuccessSnackbar('✅ Logged out successfully');
 
-      // Navigate to login screen
       Get.offAllNamed(Routes.LOGIN);
     } catch (e) {
       _showErrorSnackbar('Logout failed. Please try again.');
@@ -552,9 +711,7 @@ class AuthController extends GetxController {
     }
   }
 
-  /// Clear all form data and reset state (FIXED VERSION)
   void _clearAllData() {
-    // Clear all text controllers
     emailController.clear();
     passwordController.clear();
     firstNameController.clear();
@@ -570,7 +727,6 @@ class AuthController extends GetxController {
     otpController.clear();
     forgotPasswordEmailController.clear();
 
-    // Reset all observable variables
     rememberMe.value = false;
     agreeToTerms.value = false;
     selectedGender.value = null;
@@ -581,29 +737,26 @@ class AuthController extends GetxController {
     isPasswordVisible.value = false;
     isConfirmPasswordVisible.value = false;
 
-    // Reset social auth state
     isFromSocialAuth.value = false;
     socialUserInfo.value = null;
 
-    // Reset OTP timer
     otpTimer.value = 58;
     canResendOTP.value = false;
   }
 
-  /// Show logout confirmation dialog
   void showLogoutDialog() {
     Get.dialog(
       AlertDialog(
-        title: Text('Logout'),
-        content: Text('Are you sure you want to logout?'),
+        title: const Text('Logout'),
+        content: const Text('Are you sure you want to logout?'),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: Text('Cancel')),
+          TextButton(onPressed: () => Get.back(), child: const Text('Cancel')),
           TextButton(
             onPressed: () {
-              Get.back(); // Close dialog
-              logout(); // Perform logout
+              Get.back();
+              logout();
             },
-            child: Text('Logout', style: TextStyle(color: Colors.red)),
+            child: const Text('Logout', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -618,15 +771,13 @@ class AuthController extends GetxController {
     try {
       isLoading.value = true;
 
-      // Send verification email for password reset
       final response = await _authService.sendVerificationEmail(
         forgotPasswordEmailController.text.trim(),
       );
 
       if (response.success) {
-        _showSuccessSnackbar('Password reset code sent to your email');
-        // You can navigate to OTP verification for password reset
-        Get.back(); // Close dialog
+        _showSuccessSnackbar('📧 Password reset code sent to your email');
+        Get.back();
       } else {
         _showErrorSnackbar(response.error ?? 'Failed to send reset code');
       }
@@ -646,6 +797,8 @@ class AuthController extends GetxController {
       snackPosition: SnackPosition.TOP,
       backgroundColor: Colors.green,
       colorText: Colors.white,
+      duration: const Duration(seconds: 3),
+      icon: const Icon(Icons.check_circle, color: Colors.white),
     );
   }
 
@@ -656,6 +809,8 @@ class AuthController extends GetxController {
       snackPosition: SnackPosition.TOP,
       backgroundColor: Colors.red,
       colorText: Colors.white,
+      duration: const Duration(seconds: 3),
+      icon: const Icon(Icons.error, color: Colors.white),
     );
   }
 
@@ -667,7 +822,7 @@ class AuthController extends GetxController {
   void goBack() => Get.back();
   void skipStep() => Get.toNamed(Routes.BOTTOM_NAV_BAR);
 
-  // Individual clear methods (kept for specific use cases)
+  // Individual clear methods
   void clearLoginForm() {
     emailController.clear();
     passwordController.clear();
@@ -703,7 +858,6 @@ class AuthController extends GetxController {
     isEmailVerified.value = false;
   }
 
-  // Reset authentication state (kept for compatibility but not used in logout)
   void resetAuthState() {
     clearLoginForm();
     clearSignUpForm();

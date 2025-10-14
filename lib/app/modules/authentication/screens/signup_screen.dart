@@ -80,7 +80,7 @@ class SignUp extends StatelessWidget {
                           children: [
                             Image.asset(
                               authController.isPasswordVisible.value
-                                  ? Assets.imagesAdd
+                                  ? Assets.imagesUnicon
                                   : Assets.imagesEye,
                               height: 18,
                             ),
@@ -106,7 +106,7 @@ class SignUp extends StatelessWidget {
                           children: [
                             Image.asset(
                               authController.isConfirmPasswordVisible.value
-                                  ? Assets.imagesEdit
+                                  ? Assets.imagesUnicon
                                   : Assets.imagesEye,
                               height: 18,
                             ),

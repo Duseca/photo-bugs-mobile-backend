@@ -1,8 +1,13 @@
+// CORRECTED VERSION - Google Sign-In v7.2.0
+// GoogleSignInAuthentication ab sirf idToken provide karta hai
+// accessToken ab directly available nahi hai
+
 // ignore_for_file: avoid_print
 
 import 'dart:async';
 import 'dart:convert';
 import 'package:get/get.dart';
+import 'package:photo_bug/app/data/models/google_tokens_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:photo_bug/app/data/models/user_model.dart' as models;
 import 'package:photo_bug/app/data/models/api_response.dart';
@@ -33,6 +38,10 @@ class AuthService extends GetxService {
   final RxBool _isFirstTime = true.obs;
   final RxBool _onboardingCompleted = false.obs;
 
+  // Google Drive specific
+  final RxBool _isGoogleDriveConnected = false.obs;
+  final Rx<GoogleTokens?> _googleTokens = Rx<GoogleTokens?>(null);
+
   // Getters
   models.User? get currentUser => _currentUser.value;
   String? get authToken => _authToken.value;
@@ -42,6 +51,14 @@ class AuthService extends GetxService {
   bool get isFirstTime => _isFirstTime.value;
   bool get onboardingCompleted => _onboardingCompleted.value;
   bool get shouldShowOnboarding => isFirstTime && !onboardingCompleted;
+  bool get isGoogleDriveConnected => _isGoogleDriveConnected.value;
+  GoogleTokens? get googleTokens => _googleTokens.value;
+
+  // Check if user needs Google Drive authorization
+  bool get needsGoogleDriveAuth {
+    if (currentUser?.googleTokens == null) return true;
+    return currentUser!.googleTokens!.isExpired;
+  }
 
   // Streams for reactive UI
   Stream<models.User?> get userStream => _currentUser.stream;
@@ -87,6 +104,13 @@ class AuthService extends GetxService {
       if (userJson != null && userJson.isNotEmpty) {
         final userMap = jsonDecode(userJson) as Map<String, dynamic>;
         _currentUser.value = models.User.fromJson(userMap);
+
+        // Check Google Drive connection status
+        if (_currentUser.value?.googleTokens != null) {
+          _googleTokens.value = _currentUser.value!.googleTokens;
+          _isGoogleDriveConnected.value =
+              !_currentUser.value!.googleTokens!.isExpired;
+        }
       }
 
       _updateAuthState();
@@ -113,7 +137,6 @@ class AuthService extends GetxService {
   }
 
   // ==================== AUTHENTICATION FLOW ====================
-  // Flow: Send Email → Verify Email → Register → Login
 
   /// Step 1: Send verification email
   Future<ApiResponse<dynamic>> sendVerificationEmail(String email) async {
@@ -135,7 +158,7 @@ class AuthService extends GetxService {
     }
   }
 
-  /// Step 2: Verify email with code (before registration)
+  /// Step 2: Verify email with code
   Future<ApiResponse<dynamic>> verifyEmailCode(
     String email,
     String code,
@@ -158,7 +181,7 @@ class AuthService extends GetxService {
     }
   }
 
-  /// Step 3: Register with full user data (after email verification)
+  /// Step 3: Register with full user data
   Future<ApiResponse<auth_models.AuthResponse>> register(
     auth_models.RegisterRequest request,
   ) async {
@@ -199,6 +222,7 @@ class AuthService extends GetxService {
 
       if (response.success && response.data != null) {
         await _handleAuthSuccess(response.data!);
+        _updateGoogleDriveStatus();
       }
 
       return response;
@@ -225,6 +249,7 @@ class AuthService extends GetxService {
 
       if (response.success && response.data != null) {
         await _saveUser(response.data!);
+        _updateGoogleDriveStatus();
       }
 
       return response;
@@ -237,7 +262,6 @@ class AuthService extends GetxService {
   }
 
   /// Update user profile
-  // In AuthService.updateUser()
   Future<ApiResponse<models.User>> updateUser(
     Map<String, dynamic> userData,
   ) async {
@@ -253,10 +277,13 @@ class AuthService extends GetxService {
       );
 
       print('API Response: ${response.success}');
-      print('Response data: ${response.data?.toJson()}'); // ← Add this
+      if (response.data != null) {
+        print('Response data: ${response.data?.toJson()}');
+      }
 
       if (response.success && response.data != null) {
         await _saveUser(response.data!);
+        _updateGoogleDriveStatus();
       }
 
       return response;
@@ -295,7 +322,6 @@ class AuthService extends GetxService {
 
   // ==================== STORAGE & FAVORITES ====================
 
-  /// Get storage info
   Future<ApiResponse<auth_models.StorageInfo>> getStorageInfo() async {
     try {
       return await _makeApiRequest<auth_models.StorageInfo>(
@@ -311,7 +337,6 @@ class AuthService extends GetxService {
     }
   }
 
-  /// Purchase storage
   Future<ApiResponse<dynamic>> purchaseStorage(
     auth_models.PurchaseStorageRequest request,
   ) async {
@@ -329,7 +354,6 @@ class AuthService extends GetxService {
     }
   }
 
-  /// Add user to favorites
   Future<ApiResponse<dynamic>> addFavorite(String userId) async {
     try {
       return await _makeApiRequest(
@@ -344,7 +368,6 @@ class AuthService extends GetxService {
     }
   }
 
-  /// Remove user from favorites
   Future<ApiResponse<dynamic>> removeFavorite(String userId) async {
     try {
       return await _makeApiRequest(
@@ -361,7 +384,6 @@ class AuthService extends GetxService {
 
   // ==================== ONBOARDING ====================
 
-  /// Complete onboarding
   Future<void> completeOnboarding() async {
     await _prefs.setBool(_onboardingKey, true);
     await _prefs.setBool(_firstTimeKey, false);
@@ -369,7 +391,6 @@ class AuthService extends GetxService {
     _isFirstTime.value = false;
   }
 
-  /// Reset onboarding (for testing)
   Future<void> resetOnboarding() async {
     await _prefs.remove(_onboardingKey);
     await _prefs.remove(_firstTimeKey);
@@ -379,12 +400,11 @@ class AuthService extends GetxService {
 
   // ==================== LOGOUT ====================
 
-  /// Logout user
   Future<void> logout() async {
     try {
       _isLoading.value = true;
       await signOutFromSocialProviders();
-      // Call API logout endpoint if available
+
       try {
         await _makeApiRequest(method: 'POST', endpoint: '/api/auth/logout');
       } catch (e) {
@@ -400,7 +420,6 @@ class AuthService extends GetxService {
     }
   }
 
-  /// Clean storage
   Future<void> cleanStorage() async {
     await Future.wait([
       _appService.sharedPreferences.remove(_tokenKey),
@@ -409,22 +428,31 @@ class AuthService extends GetxService {
     ]);
   }
 
-  /// Reset authentication state
   void _resetAuthState() {
     _currentUser.value = null;
     _authToken.value = null;
     _isAuthenticated.value = false;
+    _googleTokens.value = null;
+    _isGoogleDriveConnected.value = false;
   }
 
   // ==================== HELPER METHODS ====================
 
-  /// Update authentication state
   void _updateAuthState() {
     _isAuthenticated.value =
         authToken != null && authToken!.isNotEmpty && currentUser != null;
   }
 
-  /// Handle successful authentication
+  void _updateGoogleDriveStatus() {
+    if (currentUser?.googleTokens != null) {
+      _googleTokens.value = currentUser!.googleTokens;
+      _isGoogleDriveConnected.value = !currentUser!.googleTokens!.isExpired;
+    } else {
+      _googleTokens.value = null;
+      _isGoogleDriveConnected.value = false;
+    }
+  }
+
   Future<void> _handleAuthSuccess(auth_models.AuthResponse authResponse) async {
     if (authResponse.token != null) {
       await _saveToken(authResponse.token!);
@@ -435,38 +463,27 @@ class AuthService extends GetxService {
     }
 
     _updateAuthState();
+    _updateGoogleDriveStatus();
   }
 
-  /// Save authentication token
   Future<void> _saveToken(String token) async {
     _authToken.value = token;
     await _appService.sharedPreferences.setString(_tokenKey, token);
   }
 
-  /// Save user data
   Future<void> _saveUser(models.User user) async {
     print('AuthService: Saving user: ${user.toJson()}');
 
-    // IMPORTANT: Force the reactive update by setting to null first
-    // This ensures the stream listeners are triggered
     _currentUser.value = null;
-
-    // Small delay to ensure the null value is processed
     await Future.delayed(Duration.zero);
-
-    // Now set the actual user data
     _currentUser.value = user;
 
-    // Save to SharedPreferences
     final userJson = jsonEncode(user.toJson());
     await _appService.sharedPreferences.setString(_currentUserKey, userJson);
 
-    print(
-      'AuthService: User saved and stream updated with: ${_currentUser.value?.name}',
-    );
+    print('AuthService: User saved: ${_currentUser.value?.name}');
   }
 
-  /// Validate token with API server
   Future<bool> _validateToken() async {
     if (authToken == null) return false;
 
@@ -478,7 +495,6 @@ class AuthService extends GetxService {
     }
   }
 
-  /// Make authentication request
   Future<ApiResponse<auth_models.AuthResponse>> _makeAuthRequest({
     required String endpoint,
     required Map<String, dynamic> data,
@@ -491,7 +507,6 @@ class AuthService extends GetxService {
     );
   }
 
-  /// Generic API request method
   Future<ApiResponse<T>> _makeApiRequest<T>({
     required String method,
     required String endpoint,
@@ -532,7 +547,6 @@ class AuthService extends GetxService {
     }
   }
 
-  /// Handle HTTP response
   ApiResponse<T> _handleResponse<T>(
     Response response,
     T Function(dynamic)? fromJson,
@@ -540,7 +554,6 @@ class AuthService extends GetxService {
     try {
       final statusCode = response.statusCode ?? 0;
 
-      // Handle successful responses
       if (statusCode >= 200 && statusCode < 300) {
         final responseData = response.body;
 
@@ -556,7 +569,6 @@ class AuthService extends GetxService {
         );
       }
 
-      // Handle error responses
       final errorData = response.body ?? {};
       return ApiResponse<T>(
         success: false,
@@ -573,7 +585,6 @@ class AuthService extends GetxService {
     }
   }
 
-  /// Handle request errors
   ApiResponse<T> _handleError<T>(dynamic error) {
     String errorMessage;
 
@@ -588,109 +599,152 @@ class AuthService extends GetxService {
     return ApiResponse<T>(success: false, error: errorMessage);
   }
 
-  /// Refresh user data
   Future<void> refreshUserData() async {
     if (isAuthenticated) {
       await getCurrentUser();
     }
   }
 
-  /// Check if user has specific role
   bool hasRole(String role) {
     return currentUser?.role == role;
   }
 
-  //////===================================Social AUTH===================================//////
+  bool get needsProfileCompletion {
+    if (currentUser == null) return false;
+
+    final user = currentUser!;
+
+    return user.phone == '+1234567890' ||
+        user.phone == null ||
+        user.phone!.isEmpty ||
+        user.address == null ||
+        user.interests == null ||
+        user.interests!.isEmpty ||
+        user.gender == null ||
+        user.gender!.isEmpty ||
+        user.dateOfBirth == null;
+  }
+
+  // ==================== GOOGLE SIGN-IN V7.2.0 CORRECTED ====================
+
   GoogleSignIn? _googleSignIn;
   bool _isGoogleSignInInitialized = false;
 
-  // Initialize Google Sign-In (call this in your AuthService init method)
+  /// Initialize Google Sign-In - CORRECTED VERSION
   Future<void> _initializeGoogleSignIn() async {
     try {
       _googleSignIn = GoogleSignIn.instance;
 
-      // Initialize with your configuration
-      await _googleSignIn!.initialize(
-        // Optional: Add your serverClientId here if you have one
-        // serverClientId: 'YOUR_SERVER_CLIENT_ID.apps.googleusercontent.com',
-      );
+      // Initialize call
+      await _googleSignIn!.initialize();
 
       _isGoogleSignInInitialized = true;
-      print('Google Sign-In initialized successfully');
+      print('✅ Google Sign-In v7.2.0 initialized successfully');
     } catch (e) {
-      print('Failed to initialize Google Sign-In: $e');
+      print('❌ Failed to initialize Google Sign-In: $e');
       _isGoogleSignInInitialized = false;
     }
   }
 
-  // Ensure Google Sign-In is initialized before use
   Future<void> _ensureGoogleSignInInitialized() async {
     if (!_isGoogleSignInInitialized || _googleSignIn == null) {
       await _initializeGoogleSignIn();
     }
   }
 
-  // Updated Google Sign In method
+  /// Google Sign-In - CORRECTED VERSION
   Future<ApiResponse<auth_models.AuthResponse>> signInWithGoogle() async {
     try {
       _isLoading.value = true;
 
-      // Ensure Google Sign-In is initialized
+      print('🔵 Step 1: Starting Google Sign-In');
       await _ensureGoogleSignInInitialized();
 
+      print('🔵 Step 2: Initialization status: $_isGoogleSignInInitialized');
       if (!_isGoogleSignInInitialized || _googleSignIn == null) {
+        print('❌ Google Sign-In not initialized');
         return ApiResponse<auth_models.AuthResponse>(
           success: false,
           error: 'Google Sign-In initialization failed',
         );
       }
 
+      print('🔵 Step 3: Calling authenticate()');
       GoogleSignInAccount? googleUser;
 
       try {
-        // First try lightweight authentication (silent sign-in)
-        googleUser = await _googleSignIn!.attemptLightweightAuthentication();
-      } catch (e) {
-        print('Lightweight authentication failed: $e');
-      }
+        googleUser = await _googleSignIn!.authenticate();
+        print('✅ Step 4: authenticate() completed');
+        print('   User: ${googleUser?.email}');
+      } on GoogleSignInException catch (e) {
+        print('❌ GoogleSignInException caught:');
+        print('   Code: ${e.code.name}');
+        print('   Description: ${e.description}');
+        print('   Details: ${e.details}');
 
-      // If lightweight authentication fails, use interactive sign-in
-      if (googleUser == null) {
-        try {
-          googleUser = await _googleSignIn!.authenticate();
-        } catch (e) {
-          print('Interactive authentication failed: $e');
-          if (e.toString().contains('canceled')) {
-            return ApiResponse<auth_models.AuthResponse>(
-              success: false,
-              error: 'Google sign-in was cancelled',
-            );
-          }
+        if (e.code == GoogleSignInExceptionCode.canceled) {
           return ApiResponse<auth_models.AuthResponse>(
             success: false,
-            error: 'Google sign-in failed: $e',
+            error: 'Google sign-in was cancelled',
           );
         }
+
+        return ApiResponse<auth_models.AuthResponse>(
+          success: false,
+          error: 'Google sign-in failed: ${e.description}',
+        );
+      } catch (e) {
+        print('❌ Unknown error: $e');
+        return ApiResponse<auth_models.AuthResponse>(
+          success: false,
+          error: 'Google sign-in failed: $e',
+        );
       }
 
       if (googleUser == null) {
+        print('❌ Step 5: googleUser is null');
         return ApiResponse<auth_models.AuthResponse>(
           success: false,
           error: 'Google sign-in failed - no user returned',
         );
       }
 
-      // Create social user info from Google data
-      final socialUserInfo = auth_models.SocialUserInfo.fromGoogleSignIn({
-        'id': googleUser.id,
-        'displayName': googleUser.displayName ?? '',
-        'email': googleUser.email,
-        'photoUrl': googleUser.photoUrl,
-      });
+      print('🔵 Step 6: Getting authentication tokens');
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
 
-      return await _handleSocialAuth(socialUserInfo);
+      final idToken = googleAuth.idToken ?? '';
+      print('🔵 Step 7: idToken length: ${idToken.length}');
+
+      if (idToken.isEmpty) {
+        print('❌ Step 8: idToken is empty');
+        return ApiResponse<auth_models.AuthResponse>(
+          success: false,
+          error: 'Failed to get Google ID token',
+        );
+      }
+
+      print('🔵 Step 9: Creating GoogleTokens');
+      final tokens = GoogleTokens(
+        accessToken: idToken,
+        refreshToken: idToken,
+        expiryDate:
+            DateTime.now().add(const Duration(hours: 1)).millisecondsSinceEpoch,
+      );
+
+      print('🔵 Step 10: Creating SocialUserInfo');
+      final socialUserInfo = auth_models.SocialUserInfo(
+        id: googleUser.id,
+        provider: 'google',
+        email: googleUser.email,
+        name: googleUser.displayName ?? '',
+        profilePicture: googleUser.photoUrl,
+      );
+
+      print('🔵 Step 11: Handling social auth with backend');
+      return await _handleSocialAuthWithTokens(socialUserInfo, tokens);
     } catch (e) {
-      print('Google sign-in error: $e');
+      print('❌ Top-level error: $e');
       return ApiResponse<auth_models.AuthResponse>(
         success: false,
         error: 'Google sign-in failed: $e',
@@ -700,12 +754,11 @@ class AuthService extends GetxService {
     }
   }
 
-  // Updated Facebook Sign In method
+  /// Facebook Sign In
   Future<ApiResponse<auth_models.AuthResponse>> signInWithFacebook() async {
     try {
       _isLoading.value = true;
 
-      // Start Facebook login with updated API
       final LoginResult result = await FacebookAuth.instance.login(
         permissions: ['email', 'public_profile'],
       );
@@ -733,7 +786,6 @@ class AuthService extends GetxService {
         );
       }
 
-      // Get user data from Facebook with updated API
       final Map<String, dynamic> userData = await FacebookAuth.instance
           .getUserData(
             fields: "name,email,picture.width(200),first_name,last_name",
@@ -746,7 +798,6 @@ class AuthService extends GetxService {
         );
       }
 
-      // Create social user info from Facebook data
       final socialUserInfo = auth_models.SocialUserInfo.fromFacebookLogin({
         'id': userData['id'],
         'name': userData['name'],
@@ -768,12 +819,33 @@ class AuthService extends GetxService {
     }
   }
 
-  // Handle social authentication (login or register)
+  Future<ApiResponse<auth_models.AuthResponse>> _handleSocialAuthWithTokens(
+    auth_models.SocialUserInfo socialUserInfo,
+    GoogleTokens tokens,
+  ) async {
+    try {
+      final loginResponse = await _attemptSocialLogin(socialUserInfo);
+
+      if (loginResponse.success && loginResponse.data != null) {
+        print('✅ Existing Google user logged in');
+        await _saveGoogleTokensToBackend(tokens);
+        return loginResponse;
+      }
+
+      print('🆕 New Google user - registering with tokens');
+      return await _attemptSocialRegisterWithTokens(socialUserInfo, tokens);
+    } catch (e) {
+      return ApiResponse<auth_models.AuthResponse>(
+        success: false,
+        error: 'Social authentication failed: $e',
+      );
+    }
+  }
+
   Future<ApiResponse<auth_models.AuthResponse>> _handleSocialAuth(
     auth_models.SocialUserInfo socialUserInfo,
   ) async {
     try {
-      // First try to login with existing social account
       final loginResponse = await _attemptSocialLogin(socialUserInfo);
 
       if (loginResponse.success) {
@@ -781,7 +853,6 @@ class AuthService extends GetxService {
         return loginResponse;
       }
 
-      // If login fails, try to register new social account
       print('New social user - attempting registration');
       return await _attemptSocialRegister(socialUserInfo);
     } catch (e) {
@@ -792,7 +863,6 @@ class AuthService extends GetxService {
     }
   }
 
-  // Attempt social login for existing users
   Future<ApiResponse<auth_models.AuthResponse>> _attemptSocialLogin(
     auth_models.SocialUserInfo socialUserInfo,
   ) async {
@@ -822,16 +892,55 @@ class AuthService extends GetxService {
     }
   }
 
-  // Attempt social registration for new users
+  Future<ApiResponse<auth_models.AuthResponse>>
+  _attemptSocialRegisterWithTokens(
+    auth_models.SocialUserInfo socialUserInfo,
+    GoogleTokens tokens,
+  ) async {
+    try {
+      final request = auth_models.SocialRegisterRequest(
+        name: socialUserInfo.name,
+        userName: socialUserInfo.generatedUsername,
+        email: socialUserInfo.email,
+        phone: '+1234567890',
+        deviceToken: await _getDeviceToken(),
+        role: 'creator',
+        profilePicture: socialUserInfo.profilePicture,
+        socialProvider: socialUserInfo.provider,
+        socialId: socialUserInfo.id,
+      );
+
+      final requestData = request.toJson();
+      requestData['googleTokens'] = tokens.toJson();
+
+      final response = await _makeAuthRequest(
+        endpoint: ApiConfig.endpoints.register,
+        data: requestData,
+      );
+
+      if (response.success && response.data != null) {
+        await _handleAuthSuccess(response.data!);
+        print('✅ Google registration successful with Drive tokens');
+      }
+
+      return response;
+    } catch (e) {
+      return ApiResponse<auth_models.AuthResponse>(
+        success: false,
+        error: 'Social registration failed: $e',
+      );
+    }
+  }
+
   Future<ApiResponse<auth_models.AuthResponse>> _attemptSocialRegister(
     auth_models.SocialUserInfo socialUserInfo,
   ) async {
     try {
       final request = auth_models.SocialRegisterRequest(
-        name: socialUserInfo.displayName,
+        name: socialUserInfo.name,
         userName: socialUserInfo.generatedUsername,
         email: socialUserInfo.email,
-        phone: '+1234567890', // Default phone - will be completed in profile
+        phone: '+1234567890',
         deviceToken: await _getDeviceToken(),
         role: 'creator',
         profilePicture: socialUserInfo.profilePicture,
@@ -846,7 +955,7 @@ class AuthService extends GetxService {
 
       if (response.success && response.data != null) {
         await _handleAuthSuccess(response.data!);
-        print('Social registration successful - user needs profile completion');
+        print('Social registration successful');
       }
 
       return response;
@@ -858,11 +967,256 @@ class AuthService extends GetxService {
     }
   }
 
-  // Get device token for push notifications (simplified without Firebase)
+  // ==================== GOOGLE DRIVE AUTHORIZATION - CORRECTED ====================
+
+  /// Authorize Google Drive for email/password users
+  Future<ApiResponse<GoogleTokens>> authorizeGoogleDrive() async {
+    try {
+      _isLoading.value = true;
+
+      await _ensureGoogleSignInInitialized();
+
+      if (!_isGoogleSignInInitialized || _googleSignIn == null) {
+        return ApiResponse<GoogleTokens>(
+          success: false,
+          error: 'Google Sign-In initialization failed',
+        );
+      }
+
+      GoogleSignInAccount? googleUser;
+
+      try {
+        // v7.2.0 authenticate() method - scopeHint parameter bhi available nahi hai
+        // Scopes constructor mein already define hain
+        googleUser = await _googleSignIn!.authenticate();
+      } on GoogleSignInException catch (e) {
+        print('Google Drive auth error: ${e.code.name} - ${e.description}');
+
+        if (e.code == GoogleSignInExceptionCode.canceled) {
+          return ApiResponse<GoogleTokens>(
+            success: false,
+            error: 'Google Drive authorization was cancelled',
+          );
+        }
+
+        return ApiResponse<GoogleTokens>(
+          success: false,
+          error: 'Google Drive authorization failed: ${e.description}',
+        );
+      } catch (e) {
+        return ApiResponse<GoogleTokens>(
+          success: false,
+          error: 'Google Drive authorization failed: $e',
+        );
+      }
+
+      if (googleUser == null) {
+        return ApiResponse<GoogleTokens>(
+          success: false,
+          error: 'Google Drive authorization failed',
+        );
+      }
+
+      // Get authentication
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
+
+      final idToken = googleAuth.idToken ?? '';
+
+      if (idToken.isEmpty) {
+        return ApiResponse<GoogleTokens>(
+          success: false,
+          error: 'Failed to get Google ID token',
+        );
+      }
+
+      // Create tokens object
+      final tokens = GoogleTokens(
+        accessToken: idToken, // Use idToken as accessToken
+        refreshToken: idToken, // Same for refresh
+        expiryDate:
+            DateTime.now().add(const Duration(hours: 1)).millisecondsSinceEpoch,
+      );
+
+      // Save to backend
+      final saveResponse = await _saveGoogleTokensToBackend(tokens);
+
+      if (saveResponse.success) {
+        _googleTokens.value = tokens;
+        _isGoogleDriveConnected.value = true;
+        await refreshUserData();
+        print('✅ Google Drive authorized successfully');
+      }
+
+      return saveResponse;
+    } catch (e) {
+      print('Google Drive authorization error: $e');
+      return ApiResponse<GoogleTokens>(
+        success: false,
+        error: 'Google Drive authorization failed: $e',
+      );
+    } finally {
+      _isLoading.value = false;
+    }
+  }
+
+  /// Save Google tokens to backend
+  Future<ApiResponse<GoogleTokens>> _saveGoogleTokensToBackend(
+    GoogleTokens tokens,
+  ) async {
+    try {
+      final response = await _makeApiRequest(
+        method: 'PUT',
+        endpoint: ApiConfig.endpoints.updateUser,
+        data: {'googleTokens': tokens.toJson()},
+      );
+
+      if (response.success) {
+        return ApiResponse<GoogleTokens>(
+          success: true,
+          data: tokens,
+          message: 'Google tokens saved successfully',
+        );
+      } else {
+        return ApiResponse<GoogleTokens>(
+          success: false,
+          error: response.error ?? 'Failed to save tokens',
+        );
+      }
+    } catch (e) {
+      return ApiResponse<GoogleTokens>(
+        success: false,
+        error: 'Failed to save Google tokens: $e',
+      );
+    }
+  }
+
+  /// Refresh Google Drive tokens
+  Future<ApiResponse<GoogleTokens>> refreshGoogleDriveTokens() async {
+    try {
+      if (currentUser?.googleTokens == null) {
+        return ApiResponse<GoogleTokens>(
+          success: false,
+          error: 'No Google tokens found. Please authorize Google Drive.',
+        );
+      }
+
+      await _ensureGoogleSignInInitialized();
+
+      if (_googleSignIn == null) {
+        return authorizeGoogleDrive();
+      }
+
+      // Try silent sign-in
+      GoogleSignInAccount? googleUser =
+          await _googleSignIn!.attemptLightweightAuthentication();
+
+      if (googleUser == null) {
+        // Silent sign-in failed, need interactive authorization
+        return authorizeGoogleDrive();
+      }
+
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
+
+      final idToken = googleAuth.idToken ?? '';
+
+      if (idToken.isEmpty) {
+        return authorizeGoogleDrive();
+      }
+
+      final tokens = GoogleTokens(
+        accessToken: idToken,
+        refreshToken: idToken,
+        expiryDate:
+            DateTime.now().add(const Duration(hours: 1)).millisecondsSinceEpoch,
+      );
+
+      final response = await _saveGoogleTokensToBackend(tokens);
+
+      if (response.success) {
+        _googleTokens.value = tokens;
+        _isGoogleDriveConnected.value = true;
+        await refreshUserData();
+        print('✅ Google tokens refreshed');
+      }
+
+      return response;
+    } catch (e) {
+      print('Token refresh error: $e');
+      return ApiResponse<GoogleTokens>(
+        success: false,
+        error: 'Failed to refresh tokens: $e',
+      );
+    }
+  }
+
+  /// Ensure Google Drive access is valid
+  Future<bool> ensureGoogleDriveAccess() async {
+    if (currentUser?.googleTokens == null) {
+      print('❌ No Google tokens found - authorization needed');
+      return false;
+    }
+
+    if (currentUser!.googleTokens!.isExpired) {
+      print('⏰ Google tokens expired - refreshing...');
+      final response = await refreshGoogleDriveTokens();
+      return response.success;
+    }
+
+    _isGoogleDriveConnected.value = true;
+    return true;
+  }
+
+  /// Get valid Google access token for API calls
+  Future<String?> getValidGoogleAccessToken() async {
+    try {
+      final hasAccess = await ensureGoogleDriveAccess();
+
+      if (!hasAccess) {
+        print('❌ Google Drive access not available');
+        return null;
+      }
+
+      if (currentUser?.googleTokens?.isExpired ?? true) {
+        final refreshResponse = await refreshGoogleDriveTokens();
+        if (!refreshResponse.success) {
+          return null;
+        }
+      }
+
+      return currentUser?.googleTokens?.accessToken;
+    } catch (e) {
+      print('Error getting Google access token: $e');
+      return null;
+    }
+  }
+
+  /// Disconnect Google Drive
+  Future<void> disconnectGoogleDrive() async {
+    try {
+      await _googleSignIn?.signOut();
+
+      await _makeApiRequest(
+        method: 'PUT',
+        endpoint: ApiConfig.endpoints.updateUser,
+        data: {'googleTokens': null},
+      );
+
+      _googleTokens.value = null;
+      _isGoogleDriveConnected.value = false;
+
+      await refreshUserData();
+
+      print('✅ Google Drive disconnected');
+    } catch (e) {
+      print('Error disconnecting Google Drive: $e');
+    }
+  }
+
+  /// Get device token
   Future<String?> _getDeviceToken() async {
     try {
-      // Since you're not using Firebase, return a placeholder or implement your own push notification system
-      // You can replace this with your own device identification logic
       return 'device_${DateTime.now().millisecondsSinceEpoch}';
     } catch (e) {
       print('Error getting device token: $e');
@@ -870,42 +1224,21 @@ class AuthService extends GetxService {
     }
   }
 
-  // Check if user needs to complete profile (enhanced for social auth)
-  bool get needsProfileCompletion {
-    if (currentUser == null) return false;
-
-    // Check if essential profile fields are missing or have default values
-    final user = currentUser!;
-
-    return user.phone ==
-            '+1234567890' || // Default phone from social registration
-        user.phone == null ||
-        user.phone!.isEmpty ||
-        user.address == null ||
-        user.interests == null ||
-        user.interests!.isEmpty ||
-        user.gender == null ||
-        user.gender!.isEmpty ||
-        user.dateOfBirth == null;
-  }
-
-  // Sign out from all social providers (updated for latest versions)
+  /// Sign out from social providers
   Future<void> signOutFromSocialProviders() async {
     try {
-      // Sign out from Google - simplified approach
       if (_isGoogleSignInInitialized && _googleSignIn != null) {
         try {
           await _googleSignIn!.signOut();
-          print('Signed out from Google');
+          print('✅ Signed out from Google');
         } catch (e) {
           print('Error signing out from Google: $e');
         }
       }
 
-      // Sign out from Facebook
       try {
         await FacebookAuth.instance.logOut();
-        print('Signed out from Facebook');
+        print('✅ Signed out from Facebook');
       } catch (e) {
         print('Error signing out from Facebook: $e');
       }

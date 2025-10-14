@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "475571616343",
+    "project_id": "your-project-id"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:475571616343:android:abc123",
+        "android_client_info": {
+          "package_name": "com.example.photo_bug"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "475571616343-l75ce4tljhq6pmbf8mjdh9oj4fb95l11.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.photo_bug",
+            "certificate_hash": "e2ccf0a82902674106f5d52220ff5a1c251c43d081"
+          }
+        },
+        {
+          "client_id": "475571616343-2kfdvc5eqknjs0p9s8pf9dbgrmpu3s1q.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ]
+    }
+  ]
+}
