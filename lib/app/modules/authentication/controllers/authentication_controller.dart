@@ -93,7 +93,7 @@ class AuthController extends GetxController {
     _authService.authStateStream.listen((bool authenticated) {
       if (authenticated) {
         // ✅ CHANGE: Check profile completion first
-        Future.delayed(const Duration(milliseconds: 800), () {
+        Future.delayed(const Duration(milliseconds: 300), () {
           if (_authService.needsProfileCompletion) {
             print('📝 Profile incomplete - navigating to complete profile');
 
@@ -279,7 +279,7 @@ class AuthController extends GetxController {
   Future<void> checkAndPromptGoogleDrive() async {
     // Only prompt for email/password users who don't have tokens
     if (_authService.needsGoogleDriveAuth) {
-      await Future.delayed(const Duration(seconds: 1));
+      await Future.delayed(const Duration(microseconds: 500));
       showGoogleDriveAuthDialog();
     }
   }
@@ -306,7 +306,7 @@ class AuthController extends GetxController {
               Get.back();
               authorizeGoogleDrive();
             },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+
             child: const Text('Connect Now'),
           ),
         ],
