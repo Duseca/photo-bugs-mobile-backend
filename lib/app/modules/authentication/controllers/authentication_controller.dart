@@ -11,7 +11,7 @@ import 'package:photo_bug/app/data/models/auth_models.dart' as auth_models;
 class AuthController extends GetxController {
   final AuthService _authService = AuthService.instance;
   final isSocialLoading = false.obs;
-
+  final RxBool _hasPromptedForDrive = false.obs;
   // Observable variables
   final isLoading = false.obs;
   final rememberMe = false.obs;
@@ -95,11 +95,8 @@ class AuthController extends GetxController {
         // ✅ CHANGE: Check profile completion first
         Future.delayed(const Duration(milliseconds: 300), () {
           if (_authService.needsProfileCompletion) {
-            print('📝 Profile incomplete - navigating to complete profile');
-
             Get.offAndToNamed(Routes.COMPLETE_PROFILE);
           } else {
-            print('✅ Profile complete - checking Google Drive');
             checkAndPromptGoogleDrive();
             Get.offAllNamed(Routes.BOTTOM_NAV_BAR);
           }
@@ -563,12 +560,7 @@ class AuthController extends GetxController {
 
       if (response.success) {
         _showSuccessSnackbar('✅ Login successful!');
-        // Check Google Drive after a moment
-        Future.delayed(const Duration(milliseconds: 800), () {
-          checkAndPromptGoogleDrive();
-        });
       } else {
-        print('Login error: ${response.error}');
         _showErrorSnackbar(response.error ?? 'Login failed');
       }
     } catch (e) {

@@ -44,7 +44,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return GetMaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'we buy we sell',
+      title: 'Photo Bug',
       builder:
           (context, child) => ResponsiveBreakpoints.builder(
             child: child!,

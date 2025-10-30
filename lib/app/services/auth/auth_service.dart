@@ -660,28 +660,23 @@ class AuthService extends GetxService {
       print('🔵 Step 1: Starting Google Sign-In');
       await _ensureGoogleSignInInitialized();
 
-      print('🔵 Step 2: Initialization status: $_isGoogleSignInInitialized');
       if (!_isGoogleSignInInitialized || _googleSignIn == null) {
-        print('❌ Google Sign-In not initialized');
         return ApiResponse<auth_models.AuthResponse>(
           success: false,
           error: 'Google Sign-In initialization failed',
         );
       }
+      final scopes = [
+        'email',
+        'profile',
+        'https://www.googleapis.com/auth/drive.file', // For Drive access
+      ];
 
-      print('🔵 Step 3: Calling authenticate()');
       GoogleSignInAccount? googleUser;
 
       try {
         googleUser = await _googleSignIn!.authenticate();
-        print('✅ Step 4: authenticate() completed');
-        print('   User: ${googleUser?.email}');
       } on GoogleSignInException catch (e) {
-        print('❌ GoogleSignInException caught:');
-        print('   Code: ${e.code.name}');
-        print('   Description: ${e.description}');
-        print('   Details: ${e.details}');
-
         if (e.code == GoogleSignInExceptionCode.canceled) {
           return ApiResponse<auth_models.AuthResponse>(
             success: false,
@@ -694,13 +689,13 @@ class AuthService extends GetxService {
           error: 'Google sign-in failed: ${e.description}',
         );
       } catch (e) {
-        print('❌ Unknown error: $e');
         return ApiResponse<auth_models.AuthResponse>(
           success: false,
           error: 'Google sign-in failed: $e',
         );
       }
 
+      // ignore: unnecessary_null_comparison
       if (googleUser == null) {
         print('❌ Step 5: googleUser is null');
         return ApiResponse<auth_models.AuthResponse>(
@@ -713,26 +708,36 @@ class AuthService extends GetxService {
       final GoogleSignInAuthentication googleAuth =
           await googleUser.authentication;
 
+      String? accessToken;
+      try {
+        final authorizedUser = await googleUser.authorizationClient
+            .authorizeScopes(scopes);
+
+        accessToken = authorizedUser.accessToken;
+
+        // ignore: unnecessary_null_comparison
+        if (accessToken != null && accessToken.length > 50) {
+          print('✅ Access Token  $accessToken');
+        }
+      } catch (e) {
+        print('❌ Failed to get access token: $e');
+      }
+
       final idToken = googleAuth.idToken ?? '';
-      print('🔵 Step 7: idToken length: ${idToken.length}');
 
       if (idToken.isEmpty) {
-        print('❌ Step 8: idToken is empty');
         return ApiResponse<auth_models.AuthResponse>(
           success: false,
           error: 'Failed to get Google ID token',
         );
       }
 
-      print('🔵 Step 9: Creating GoogleTokens');
       final tokens = GoogleTokens(
-        accessToken: idToken,
-        refreshToken: idToken,
+        accessToken: accessToken ?? '',
         expiryDate:
             DateTime.now().add(const Duration(hours: 1)).millisecondsSinceEpoch,
       );
 
-      print('🔵 Step 10: Creating SocialUserInfo');
       final socialUserInfo = auth_models.SocialUserInfo(
         id: googleUser.id,
         provider: 'google',
@@ -741,7 +746,6 @@ class AuthService extends GetxService {
         profilePicture: googleUser.photoUrl,
       );
 
-      print('🔵 Step 11: Handling social auth with backend');
       return await _handleSocialAuthWithTokens(socialUserInfo, tokens);
     } catch (e) {
       print('❌ Top-level error: $e');
@@ -832,7 +836,6 @@ class AuthService extends GetxService {
         return loginResponse;
       }
 
-      print('🆕 New Google user - registering with tokens');
       return await _attemptSocialRegisterWithTokens(socialUserInfo, tokens);
     } catch (e) {
       return ApiResponse<auth_models.AuthResponse>(
@@ -984,6 +987,11 @@ class AuthService extends GetxService {
       }
 
       GoogleSignInAccount? googleUser;
+      final scopes = [
+        'email',
+        'profile',
+        'https://www.googleapis.com/auth/drive.file', // For Drive access
+      ];
 
       try {
         // v7.2.0 authenticate() method - scopeHint parameter bhi available nahi hai
@@ -1010,6 +1018,7 @@ class AuthService extends GetxService {
         );
       }
 
+      // ignore: unnecessary_null_comparison
       if (googleUser == null) {
         return ApiResponse<GoogleTokens>(
           success: false,
@@ -1020,7 +1029,22 @@ class AuthService extends GetxService {
       // Get authentication
       final GoogleSignInAuthentication googleAuth =
           await googleUser.authentication;
+      String? accessToken;
+      try {
+        final authorizedUser = await googleUser.authorizationClient
+            .authorizeScopes(scopes);
 
+        accessToken = authorizedUser.accessToken;
+
+        // ignore: unnecessary_null_comparison
+        if (accessToken != null && accessToken.length > 50) {
+          print(
+            '✅ Access Token (First 50 chars): ${accessToken.substring(0, 50)}...',
+          );
+        }
+      } catch (e) {
+        print('❌ Failed to get access token: $e');
+      }
       final idToken = googleAuth.idToken ?? '';
 
       if (idToken.isEmpty) {
@@ -1032,8 +1056,7 @@ class AuthService extends GetxService {
 
       // Create tokens object
       final tokens = GoogleTokens(
-        accessToken: idToken, // Use idToken as accessToken
-        refreshToken: idToken, // Same for refresh
+        accessToken: accessToken ?? '', // Use idToken as accessToken
         expiryDate:
             DateTime.now().add(const Duration(hours: 1)).millisecondsSinceEpoch,
       );
@@ -1102,7 +1125,11 @@ class AuthService extends GetxService {
       }
 
       await _ensureGoogleSignInInitialized();
-
+      final scopes = [
+        'email',
+        'profile',
+        'https://www.googleapis.com/auth/drive.file', // For Drive access
+      ];
       if (_googleSignIn == null) {
         return authorizeGoogleDrive();
       }
@@ -1120,14 +1147,30 @@ class AuthService extends GetxService {
           await googleUser.authentication;
 
       final idToken = googleAuth.idToken ?? '';
+      String? accessToken;
+      try {
+        final authorizedUser = await googleUser.authorizationClient
+            .authorizeScopes(scopes);
+
+        accessToken = authorizedUser.accessToken;
+
+        // ignore: unnecessary_null_comparison
+        if (accessToken != null && accessToken.length > 50) {
+          print(
+            '✅ Access Token (First 50 chars): ${accessToken.substring(0, 50)}...',
+          );
+        }
+      } catch (e) {
+        print('❌ Failed to get access token: $e');
+      }
 
       if (idToken.isEmpty) {
         return authorizeGoogleDrive();
       }
 
       final tokens = GoogleTokens(
-        accessToken: idToken,
-        refreshToken: idToken,
+        accessToken: accessToken ?? '',
+
         expiryDate:
             DateTime.now().add(const Duration(hours: 1)).millisecondsSinceEpoch,
       );
