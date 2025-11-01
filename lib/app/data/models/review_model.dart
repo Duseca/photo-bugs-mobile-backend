@@ -1,156 +1,140 @@
 class Review {
-  final String? id;
+  final String id;
+  final String reviewerId;
   final String reviewForId;
-  final String? reviewerId;
-  final int ratings; // 1-5 or 1-10 scale
-  final String description;
+  final int ratings; // 1-10 scale
+  final String? comment;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
+  // Additional fields from reviewer (populated by backend)
+  final String? reviewerName;
+  final String? reviewerProfilePicture;
+
   Review({
-    this.id,
+    required this.id,
+    required this.reviewerId,
     required this.reviewForId,
-    this.reviewerId,
     required this.ratings,
-    required this.description,
+    this.comment,
     this.createdAt,
     this.updatedAt,
+    this.reviewerName,
+    this.reviewerProfilePicture,
   });
 
   factory Review.fromJson(Map<String, dynamic> json) {
     return Review(
-      id: json['_id'] ?? json['id'],
-      reviewForId: json['review_for'] ?? json['reviewFor'] ?? '',
-      reviewerId: json['reviewer'] ?? json['reviewerId'],
-      ratings: json['ratings'] ?? json['rating'] ?? 0,
-      description: json['description'] ?? '',
+      id: json['_id'] ?? json['id'] ?? '',
+      reviewerId: json['reviewer_id'] ?? json['reviewerId'] ?? '',
+      reviewForId: json['review_for_id'] ?? json['reviewForId'] ?? '',
+      ratings: json['ratings'] ?? 0,
+      comment: json['comment'],
       createdAt:
-          json['createdAt'] != null
-              ? DateTime.tryParse(json['createdAt'])
-              : null,
+          json['createdAt'] != null ? DateTime.parse(json['createdAt']) : null,
       updatedAt:
-          json['updatedAt'] != null
-              ? DateTime.tryParse(json['updatedAt'])
-              : null,
+          json['updatedAt'] != null ? DateTime.parse(json['updatedAt']) : null,
+      reviewerName: json['reviewer_name'] ?? json['reviewerName'],
+      reviewerProfilePicture:
+          json['reviewer_profile_picture'] ?? json['reviewerProfilePicture'],
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
-      if (id != null) '_id': id,
-      'review_for': reviewForId,
-      if (reviewerId != null) 'reviewer': reviewerId,
+      '_id': id,
+      'reviewer_id': reviewerId,
+      'review_for_id': reviewForId,
       'ratings': ratings,
-      'description': description,
-      if (createdAt != null) 'createdAt': createdAt!.toIso8601String(),
-      if (updatedAt != null) 'updatedAt': updatedAt!.toIso8601String(),
+      'comment': comment,
+      'createdAt': createdAt?.toIso8601String(),
+      'updatedAt': updatedAt?.toIso8601String(),
+      'reviewer_name': reviewerName,
+      'reviewer_profile_picture': reviewerProfilePicture,
     };
   }
-
-  Review copyWith({
-    String? id,
-    String? reviewForId,
-    String? reviewerId,
-    int? ratings,
-    String? description,
-    DateTime? createdAt,
-    DateTime? updatedAt,
-  }) {
-    return Review(
-      id: id ?? this.id,
-      reviewForId: reviewForId ?? this.reviewForId,
-      reviewerId: reviewerId ?? this.reviewerId,
-      ratings: ratings ?? this.ratings,
-      description: description ?? this.description,
-      createdAt: createdAt ?? this.createdAt,
-      updatedAt: updatedAt ?? this.updatedAt,
-    );
-  }
-
-  @override
-  String toString() {
-    return 'Review{id: $id, reviewForId: $reviewForId, ratings: $ratings}';
-  }
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is Review && runtimeType == other.runtimeType && id == other.id;
-
-  @override
-  int get hashCode => id.hashCode;
 }
 
-// Create Review Request Model
 class CreateReviewRequest {
   final String reviewForId;
-  final int ratings;
-  final String description;
+  final int ratings; // 1-10 scale
+  final String? comment;
 
   CreateReviewRequest({
     required this.reviewForId,
     required this.ratings,
-    required this.description,
+    this.comment,
   });
 
   Map<String, dynamic> toJson() {
     return {
-      'review_for': reviewForId,
+      'review_for_id': reviewForId,
       'ratings': ratings,
-      'description': description,
+      if (comment != null) 'comment': comment,
     };
   }
 }
 
-// Update Review Request Model
 class UpdateReviewRequest {
   final int? ratings;
-  final String? description;
+  final String? comment;
 
-  UpdateReviewRequest({this.ratings, this.description});
+  UpdateReviewRequest({this.ratings, this.comment});
 
   Map<String, dynamic> toJson() {
-    return {
-      if (ratings != null) 'ratings': ratings,
-      if (description != null) 'description': description,
-    };
+    final data = <String, dynamic>{};
+
+    if (ratings != null) {
+      data['ratings'] = ratings;
+    }
+
+    if (comment != null) {
+      data['comment'] = comment;
+    }
+
+    return data;
   }
 }
 
-// Average Rating Model
 class AverageRating {
-  final double averageRating;
+  final double average;
   final int totalReviews;
-  final Map<int, int>? ratingDistribution; // rating -> count
+  final Map<int, int> distribution; // rating -> count
 
   AverageRating({
-    required this.averageRating,
+    required this.average,
     required this.totalReviews,
-    this.ratingDistribution,
+    required this.distribution,
   });
 
   factory AverageRating.fromJson(Map<String, dynamic> json) {
     return AverageRating(
-      averageRating:
-          (json['averageRating'] ?? json['average_rating'] ?? 0.0).toDouble(),
-      totalReviews: json['totalReviews'] ?? json['total_reviews'] ?? 0,
-      ratingDistribution:
-          json['ratingDistribution'] != null
-              ? Map<int, int>.from(json['ratingDistribution'])
-              : null,
+      average: (json['average'] ?? 0.0).toDouble(),
+      totalReviews: json['total_reviews'] ?? json['totalReviews'] ?? 0,
+      distribution: _parseDistribution(json['distribution']),
     );
+  }
+
+  static Map<int, int> _parseDistribution(dynamic distribution) {
+    if (distribution == null) return {};
+
+    if (distribution is Map) {
+      return distribution.map((key, value) {
+        return MapEntry(
+          int.tryParse(key.toString()) ?? 0,
+          value is int ? value : int.tryParse(value.toString()) ?? 0,
+        );
+      });
+    }
+
+    return {};
   }
 
   Map<String, dynamic> toJson() {
     return {
-      'averageRating': averageRating,
-      'totalReviews': totalReviews,
-      if (ratingDistribution != null) 'ratingDistribution': ratingDistribution,
+      'average': average,
+      'total_reviews': totalReviews,
+      'distribution': distribution,
     };
-  }
-
-  @override
-  String toString() {
-    return 'AverageRating{averageRating: $averageRating, totalReviews: $totalReviews}';
   }
 }

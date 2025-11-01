@@ -3,26 +3,43 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:photo_bug/app/services/auth/auth_service.dart';
+import 'package:photo_bug/app/services/review_service/review_service.dart';
+import 'package:photo_bug/app/services/review_service/portfolio_service.dart';
 import 'package:photo_bug/app/data/models/user_model.dart' as models;
+import 'package:photo_bug/app/data/models/review_model.dart';
+import 'package:photo_bug/app/data/models/portfolio_model.dart';
 import 'package:photo_bug/app/routes/app_pages.dart';
 
 class ProfileController extends GetxController {
-  // Get AuthService instance
+  // Get service instances
   final AuthService _authService = AuthService.instance;
+  late final ReviewService _reviewService;
+  late final PortfolioService _portfolioService;
 
-  // Stream subscription for proper disposal
+  // Stream subscriptions
   StreamSubscription<models.User?>? _userStreamSubscription;
+  StreamSubscription<List<Review>>? _reviewsStreamSubscription;
+  StreamSubscription<Portfolio?>? _portfolioStreamSubscription;
 
   // Observable variables for profile data
   final isLoading = false.obs;
+  final isRefreshing = false.obs;
   final selectedGender = Rxn<String>();
   final selectedDateOfBirth = Rxn<DateTime>();
   final selectedInterests = <String>[].obs;
 
-  // Create a local reactive user to ensure UI updates
+  // Reactive user
   final Rx<models.User?> _localCurrentUser = Rx<models.User?>(null);
 
-  // Text editing controllers for profile
+  // Reactive reviews data (bridge from ReviewService)
+  final RxList<Review> _receivedReviews = <Review>[].obs;
+  final RxDouble _averageRating = 0.0.obs;
+
+  // Reactive portfolio data (bridge from PortfolioService)
+  final Rx<Portfolio?> _portfolio = Rx<Portfolio?>(null);
+  final RxList<PortfolioMedia> _portfolioImages = <PortfolioMedia>[].obs;
+
+  // Text editing controllers
   final firstNameController = TextEditingController();
   final lastNameController = TextEditingController();
   final usernameController = TextEditingController();
@@ -36,7 +53,7 @@ class ProfileController extends GetxController {
   // Form validation
   final completeProfileFormKey = GlobalKey<FormState>();
 
-  // Track if controller is disposed
+  // Track disposal
   bool _isDisposed = false;
 
   // Interest options
@@ -56,38 +73,62 @@ class ProfileController extends GetxController {
     'Real Estate',
   ];
 
-  // Get current user data - now reactive
+  // Getters
   models.User? get currentUser => _localCurrentUser.value;
   Rx<models.User?> get currentUserRx => _localCurrentUser;
+
+  // Review getters (bridge)
+  List<Review> get receivedReviews => _receivedReviews;
+  double get averageRating => _averageRating.value;
+  int get reviewCount => _receivedReviews.length;
+
+  // Portfolio getters (bridge)
+  Portfolio? get portfolio => _portfolio.value;
+  List<PortfolioMedia> get portfolioImages => _portfolioImages;
+  bool get hasPortfolio =>
+      _portfolio.value != null && _portfolioImages.isNotEmpty;
 
   @override
   void onInit() {
     super.onInit();
+    _initializeServices();
     _initializeProfileData();
-    _listenToAuthServiceChanges();
+    _setupListeners();
   }
 
-  /// Modified _listenToAuthServiceChanges with proper stream management
+  /// Initialize services
+  void _initializeServices() {
+    try {
+      _reviewService = Get.find<ReviewService>();
+      _portfolioService = Get.find<PortfolioService>();
+    } catch (e) {
+      if (kDebugMode) {
+        print('ProfileController: Error initializing services: $e');
+      }
+    }
+  }
+
+  /// Setup all listeners
+  void _setupListeners() {
+    _listenToAuthServiceChanges();
+    _listenToReviewServiceChanges();
+    _listenToPortfolioServiceChanges();
+  }
+
+  /// Listen to auth service changes
   void _listenToAuthServiceChanges() {
     try {
-      // Cancel any existing subscription
       _userStreamSubscription?.cancel();
 
-      // Subscribe to auth service user changes
       _userStreamSubscription = _authService.userStream.listen(
         (models.User? user) {
-          // Check if controller is disposed before updating
           if (_isDisposed) return;
 
-          // Update local user and trigger UI refresh
           _localCurrentUser.value = user;
 
           if (user != null) {
             _populateFormFields(user);
           }
-
-          // Force UI update
-          update();
         },
         onError: (error) {
           if (kDebugMode) {
@@ -97,8 +138,7 @@ class ProfileController extends GetxController {
       );
 
       // Initialize with current user
-      final currentUser = _authService.currentUser;
-      _localCurrentUser.value = currentUser;
+      _localCurrentUser.value = _authService.currentUser;
     } catch (e) {
       if (kDebugMode) {
         print('Error setting up user stream listener: $e');
@@ -106,25 +146,117 @@ class ProfileController extends GetxController {
     }
   }
 
+  /// Listen to review service changes (bridge)
+  void _listenToReviewServiceChanges() {
+    try {
+      _reviewsStreamSubscription?.cancel();
+
+      _reviewsStreamSubscription = _reviewService.receivedReviewsStream.listen(
+        (List<Review> reviews) {
+          if (_isDisposed) return;
+
+          _receivedReviews.value = reviews;
+          _calculateAverageRating();
+        },
+        onError: (error) {
+          if (kDebugMode) {
+            print('ProfileController: Error in reviews stream: $error');
+          }
+        },
+      );
+
+      // Initialize with current data
+      _receivedReviews.value = _reviewService.receivedReviews;
+      _calculateAverageRating();
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error setting up reviews stream listener: $e');
+      }
+    }
+  }
+
+  /// Listen to portfolio service changes (bridge)
+  void _listenToPortfolioServiceChanges() {
+    try {
+      _portfolioStreamSubscription?.cancel();
+
+      _portfolioStreamSubscription = _portfolioService.portfolioStream.listen(
+        (Portfolio? portfolio) {
+          if (_isDisposed) return;
+
+          // Only update if the data actually changed
+          if (_portfolio.value?.id != portfolio?.id ||
+              _portfolio.value?.media.length != portfolio?.media.length) {
+            _portfolio.value = portfolio;
+            _portfolioImages.value = portfolio?.media ?? [];
+
+            if (kDebugMode) {
+              print(
+                '🔄 ProfileController: Portfolio updated with ${portfolio?.media.length ?? 0} images',
+              );
+            }
+          }
+        },
+        onError: (error) {
+          if (kDebugMode) {
+            print('ProfileController: Error in portfolio stream: $error');
+          }
+        },
+      );
+
+      // Initialize with current data
+      _portfolio.value = _portfolioService.userPortfolio;
+      _portfolioImages.value = _portfolioService.portfolioImages;
+
+      if (kDebugMode) {
+        print(
+          '🔄 ProfileController: Initial portfolio loaded with ${_portfolioImages.length} images',
+        );
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error setting up portfolio stream listener: $e');
+      }
+    }
+  }
+
+  /// Calculate average rating locally
+  void _calculateAverageRating() {
+    if (_receivedReviews.isEmpty) {
+      _averageRating.value = 0.0;
+      return;
+    }
+
+    final sum = _receivedReviews.fold<int>(
+      0,
+      (sum, review) => sum + review.ratings,
+    );
+
+    _averageRating.value = sum / _receivedReviews.length;
+  }
+
   @override
   void onReady() {
     super.onReady();
-    // Only populate if we have a user and controller isn't disposed
     if (_localCurrentUser.value != null && !_isDisposed) {
       _populateFormFields(_localCurrentUser.value!);
     }
+
+    // Load initial data after frame is built
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      loadAllProfileData();
+    });
   }
 
   @override
   void onClose() {
-    // Mark as disposed first
     _isDisposed = true;
 
-    // Cancel stream subscription
+    // Cancel all subscriptions
     _userStreamSubscription?.cancel();
-    _userStreamSubscription = null;
+    _reviewsStreamSubscription?.cancel();
+    _portfolioStreamSubscription?.cancel();
 
-    // Dispose controllers safely
     _disposeControllers();
 
     super.onClose();
@@ -149,6 +281,210 @@ class ProfileController extends GetxController {
     }
   }
 
+  // ==================== DATA LOADING METHODS ====================
+
+  /// Load all profile data (reviews + portfolio)
+  Future<void> loadAllProfileData() async {
+    if (_isDisposed) return;
+
+    try {
+      await Future.wait([loadReviews(), loadPortfolio()]);
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error loading profile data: $e');
+      }
+    }
+  }
+
+  /// Load reviews data
+  Future<void> loadReviews() async {
+    if (_isDisposed) return;
+
+    try {
+      await _reviewService.getUserReceivedReviews();
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error loading reviews: $e');
+      }
+    }
+  }
+
+  /// Load portfolio data
+  Future<void> loadPortfolio() async {
+    if (_isDisposed) return;
+
+    try {
+      await _portfolioService.loadUserPortfolio();
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error loading portfolio: $e');
+      }
+    }
+  }
+
+  /// Refresh all profile data
+  Future<void> refreshAllProfileData() async {
+    if (_isDisposed) return;
+
+    try {
+      isRefreshing.value = true;
+
+      await Future.wait([
+        refreshProfile(),
+        refreshReviews(),
+        refreshPortfolio(),
+      ]);
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error refreshing profile data: $e');
+      }
+    } finally {
+      if (!_isDisposed) {
+        isRefreshing.value = false;
+      }
+    }
+  }
+
+  /// Refresh user profile
+  Future<void> refreshProfile() async {
+    if (_isDisposed) return;
+
+    try {
+      final response = await _authService.getCurrentUser();
+
+      if (_isDisposed) return;
+
+      if (response.success && response.data != null) {
+        _populateFormFields(response.data!);
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error refreshing profile: $e');
+      }
+    }
+  }
+
+  /// Refresh reviews
+  Future<void> refreshReviews() async {
+    if (_isDisposed) return;
+
+    try {
+      await _reviewService.getUserReceivedReviews();
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error refreshing reviews: $e');
+      }
+    }
+  }
+
+  /// Refresh portfolio
+  Future<void> refreshPortfolio() async {
+    if (_isDisposed) return;
+
+    try {
+      await _portfolioService.refreshPortfolio();
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error refreshing portfolio: $e');
+      }
+    }
+  }
+
+  // ==================== PORTFOLIO METHODS (BRIDGE) ====================
+
+  /// Add image to portfolio - service handles stream updates
+  Future<bool> addImageToPortfolio(String imageUrl) async {
+    if (_isDisposed) return false;
+
+    try {
+      // Make API call - service will update stream automatically
+      final response = await _portfolioService.addImageToPortfolio(imageUrl);
+
+      if (response.success) {
+        if (kDebugMode) {
+          print('✅ Image added successfully');
+        }
+        return true;
+      } else {
+        if (kDebugMode) {
+          print('❌ Failed to add image');
+        }
+        return false;
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error adding image to portfolio: $e');
+      }
+      return false;
+    }
+  }
+
+  /// Delete image from portfolio - service handles stream updates
+  Future<bool> deleteImageFromPortfolio(String imageUrl) async {
+    if (_isDisposed) return false;
+
+    try {
+      // Make API call - service will update stream automatically
+      final response = await _portfolioService.deleteImageFromPortfolio(
+        imageUrl,
+      );
+
+      if (response.success) {
+        if (kDebugMode) {
+          print('✅ Image deleted successfully');
+        }
+        return true;
+      } else {
+        if (kDebugMode) {
+          print('❌ Failed to delete image');
+        }
+        return false;
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error deleting image from portfolio: $e');
+      }
+      return false;
+    }
+  }
+
+  /// Check if portfolio is loading
+  bool get isPortfolioLoading => _portfolioService.isLoading;
+
+  /// Check if portfolio is uploading
+  bool get isPortfolioUploading => _portfolioService.isUploading;
+
+  // ==================== REVIEW METHODS (BRIDGE) ====================
+
+  /// Get time ago string for review
+  String getTimeAgo(DateTime? dateTime) {
+    if (dateTime == null) return 'Recently';
+
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+
+    if (difference.inDays > 365) {
+      final years = (difference.inDays / 365).floor();
+      return '$years ${years == 1 ? 'year' : 'years'} ago';
+    } else if (difference.inDays > 30) {
+      final months = (difference.inDays / 30).floor();
+      return '$months ${months == 1 ? 'month' : 'months'} ago';
+    } else if (difference.inDays > 0) {
+      return '${difference.inDays} ${difference.inDays == 1 ? 'day' : 'days'} ago';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours} ${difference.inHours == 1 ? 'hour' : 'hours'} ago';
+    } else if (difference.inMinutes > 0) {
+      return '${difference.inMinutes} ${difference.inMinutes == 1 ? 'minute' : 'minutes'} ago';
+    } else {
+      return 'Just now';
+    }
+  }
+
+  /// Check if reviews are loading
+  bool get isReviewsLoading => _reviewService.isLoading;
+
+  // ==================== PROFILE FORM METHODS ====================
+
   /// Initialize profile data from current user
   void _initializeProfileData() {
     final user = currentUser;
@@ -157,13 +493,11 @@ class ProfileController extends GetxController {
     }
   }
 
-  /// Populate form fields with user data (with disposal check)
+  /// Populate form fields with user data
   void _populateFormFields(models.User user) {
-    // Check if controller is disposed before using text controllers
     if (_isDisposed) return;
 
     try {
-      // Split name into first and last name
       final nameParts = (user.name ?? '').split(' ');
       if (nameParts.isNotEmpty) {
         firstNameController.text = nameParts.first;
@@ -176,18 +510,15 @@ class ProfileController extends GetxController {
       phoneController.text = user.phone ?? '';
       bioController.text = user.bio ?? '';
 
-      // Handle address
       if (user.address != null) {
         countryController.text = user.address?.country ?? '';
         cityController.text = user.address?.town ?? '';
         addressController.text = user.address?.address ?? '';
       }
 
-      // Set gender with proper capitalization to match dropdown items
       selectedGender.value = _normalizeGender(user.gender);
       selectedDateOfBirth.value = user.dateOfBirth;
 
-      // Set interests
       if (user.interests != null) {
         selectedInterests.assignAll(user.interests!);
       }
@@ -198,7 +529,7 @@ class ProfileController extends GetxController {
     }
   }
 
-  /// Normalize gender value to match dropdown options
+  /// Normalize gender value
   String? _normalizeGender(String? gender) {
     if (gender == null || gender.isEmpty) return null;
 
@@ -212,38 +543,6 @@ class ProfileController extends GetxController {
         return 'Prefer not to say';
       default:
         return null;
-    }
-  }
-
-  /// Refresh profile data from API
-  Future<void> refreshProfile() async {
-    if (_isDisposed) return; // Early return if disposed
-
-    try {
-      isLoading.value = true;
-
-      final response = await _authService.getCurrentUser();
-
-      // Check if still not disposed after async call
-      if (_isDisposed) return;
-
-      if (response.success && response.data != null) {
-        // Force trigger UI update by updating a reactive variable
-        update();
-
-        // Re-populate form fields with fresh data
-        _populateFormFields(response.data!);
-      } else {
-        _showErrorSnackbar(response.error ?? 'Failed to refresh profile');
-      }
-    } catch (e) {
-      if (!_isDisposed) {
-        _showErrorSnackbar('Failed to refresh profile');
-      }
-    } finally {
-      if (!_isDisposed) {
-        isLoading.value = false;
-      }
     }
   }
 
@@ -276,7 +575,7 @@ class ProfileController extends GetxController {
     return null;
   }
 
-  // ==================== PROFILE MANAGEMENT ====================
+  // ==================== PROFILE UPDATE METHODS ====================
 
   /// Complete profile information
   Future<void> completeProfile() async {
@@ -302,12 +601,10 @@ class ProfileController extends GetxController {
 
       final response = await _authService.updateUser(userData);
 
-      // Check if still not disposed after async call
       if (_isDisposed) return;
 
       if (response.success) {
         _showSuccessSnackbar('Profile updated successfully!');
-        return;
       } else {
         _showErrorSnackbar(response.error ?? 'Profile update failed');
       }
@@ -347,11 +644,9 @@ class ProfileController extends GetxController {
 
       final response = await _authService.updateUser(userData);
 
-      // Check if still not disposed after async call
       if (_isDisposed) return;
 
       if (response.success) {
-        // Wait a bit for the stream to update
         await Future.delayed(Duration(milliseconds: 100));
 
         if (!_isDisposed) {
@@ -372,7 +667,7 @@ class ProfileController extends GetxController {
     }
   }
 
-  /// Convert gender from dropdown format to API format
+  /// Convert gender for API
   String? _convertGenderForApi(String? gender) {
     if (gender == null || gender.isEmpty) return null;
 
@@ -399,12 +694,10 @@ class ProfileController extends GetxController {
 
       final response = await _authService.updateUser(interestData);
 
-      // Check if still not disposed after async call
       if (_isDisposed) return;
 
       if (response.success) {
         _showSuccessSnackbar('Interests updated successfully!');
-        return;
       } else {
         _showErrorSnackbar(response.error ?? 'Failed to save interests');
       }
@@ -421,7 +714,6 @@ class ProfileController extends GetxController {
 
   // ==================== INTEREST MANAGEMENT ====================
 
-  /// Toggle interest selection
   void toggleInterest(String interest) {
     if (_isDisposed) return;
 
@@ -432,20 +724,17 @@ class ProfileController extends GetxController {
     }
   }
 
-  /// Check if interest is selected
   bool isInterestSelected(String interest) {
     return selectedInterests.contains(interest);
   }
 
   // ==================== DATE AND GENDER SELECTION ====================
 
-  /// Select date of birth
   void selectDateOfBirth(DateTime date) {
     if (_isDisposed) return;
     selectedDateOfBirth.value = date;
   }
 
-  /// Select gender
   void selectGender(String gender) {
     if (_isDisposed) return;
     selectedGender.value = gender;
@@ -453,7 +742,6 @@ class ProfileController extends GetxController {
 
   // ==================== LOGOUT FUNCTIONALITY ====================
 
-  /// Show logout confirmation dialog
   void showLogoutDialog() {
     if (_isDisposed) return;
 
@@ -465,8 +753,8 @@ class ProfileController extends GetxController {
           TextButton(onPressed: () => Get.back(), child: Text('Cancel')),
           TextButton(
             onPressed: () {
-              Get.back(); // Close dialog
-              logout(); // Perform logout
+              Get.back();
+              logout();
             },
             child: Text('Logout', style: TextStyle(color: Colors.red)),
           ),
@@ -475,26 +763,18 @@ class ProfileController extends GetxController {
     );
   }
 
-  /// Logout user
   Future<void> logout() async {
     if (_isDisposed) return;
 
     try {
       isLoading.value = true;
 
-      // Call the AuthService logout method
       await _authService.logout();
 
-      // Check if still not disposed after async call
       if (_isDisposed) return;
 
-      // Clear profile data
       _clearProfileData();
-
-      // Show success message
       _showSuccessSnackbar('Logged out successfully');
-
-      // Navigate to login screen
       Get.offAllNamed(Routes.LOGIN);
     } catch (e) {
       if (!_isDisposed) {
@@ -510,33 +790,10 @@ class ProfileController extends GetxController {
 
   // ==================== HELPER METHODS ====================
 
-  /// Check current user state for debugging
-  void checkCurrentUserState() {
-    if (_isDisposed) return;
-
-    final user = currentUser;
-    final authServiceUser = _authService.currentUser;
-    print('ProfileController: Current user state:');
-    print('  - ProfileController user: ${user?.name}');
-    print('  - AuthService user: ${authServiceUser?.name}');
-    print('  - Users match: ${user?.name == authServiceUser?.name}');
-    if (user != null) {
-      print('  - User exists: ${user != null}');
-      print('  - Name: ${user.name}');
-      print('  - Email: ${user.email}');
-      print('  - Username: ${user.userName}');
-      print('  - Phone: ${user.phone}');
-      print('  - Gender: ${user.gender}');
-      print('  - Bio: ${user.bio}');
-    }
-  }
-
-  /// Clear all profile data
   void _clearProfileData() {
     if (_isDisposed) return;
 
     try {
-      // Clear all text controllers
       firstNameController.clear();
       lastNameController.clear();
       usernameController.clear();
@@ -547,10 +804,14 @@ class ProfileController extends GetxController {
       addressController.clear();
       bioController.clear();
 
-      // Reset observable variables
       selectedGender.value = null;
       selectedDateOfBirth.value = null;
       selectedInterests.clear();
+
+      _receivedReviews.clear();
+      _averageRating.value = 0.0;
+      _portfolio.value = null;
+      _portfolioImages.clear();
     } catch (e) {
       if (kDebugMode) {
         print('Error clearing profile data: $e');
@@ -558,7 +819,6 @@ class ProfileController extends GetxController {
     }
   }
 
-  /// Show success snackbar
   void _showSuccessSnackbar(String message) {
     if (_isDisposed) return;
 
@@ -571,7 +831,6 @@ class ProfileController extends GetxController {
     );
   }
 
-  /// Show error snackbar
   void _showErrorSnackbar(String message) {
     if (_isDisposed) return;
 

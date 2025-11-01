@@ -6,6 +6,7 @@ import 'package:photo_bug/app/services/event_service.dart/event_service.dart';
 import 'package:photo_bug/app/services/folder_service/folder_service.dart';
 import 'package:photo_bug/app/services/notification_service/notification_service.dart';
 import 'package:photo_bug/app/services/photo_service/photo_service.dart';
+import 'package:photo_bug/app/services/review_service/portfolio_service.dart';
 import 'package:photo_bug/app/services/review_service/review_service.dart';
 // Import other services as you create them
 // import 'package:photo_bug/app/data/services/notification/notification_service.dart';
@@ -38,6 +39,8 @@ Future<void> _initApiServices() async {
   await Get.putAsync(() => PhotoService().init(), permanent: true);
 
   await Get.putAsync(() => FolderService().init(), permanent: true);
+
+  await Get.putAsync(() => PortfolioService().init(), permanent: true);
 
   await Get.putAsync(() => ChatService().init(), permanent: true);
 

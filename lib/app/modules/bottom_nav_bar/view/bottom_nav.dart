@@ -204,8 +204,8 @@ class _FavoriteScreenWrapperState extends State<_FavoriteScreenWrapper>
   Future<void> _reloadFavorites() async {
     try {
       if (Get.isRegistered<FavouriteController>()) {
-        final favouriteController = Get.find<FavouriteController>();
-        await favouriteController.refreshFavoriteItems();
+        //final favouriteController = Get.find<FavouriteController>();
+        // await favouriteController.refreshFavoriteItems();
         print('✅ Favorites reloaded successfully');
       }
     } catch (e) {
