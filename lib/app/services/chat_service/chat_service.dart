@@ -16,8 +16,6 @@ class ChatService extends GetxService {
 
   // Reactive variables
   final RxList<Chat> _userChats = <Chat>[].obs;
-  final RxMap<String, List<Message>> _messagesByChat =
-      <String, List<Message>>{}.obs;
   final Rx<Chat?> _selectedChat = Rx<Chat?>(null);
   final RxBool _isLoading = false.obs;
   final RxBool _isSendingMessage = false.obs;
@@ -30,7 +28,7 @@ class ChatService extends GetxService {
   bool get isSendingMessage => _isSendingMessage.value;
   int get unreadCount => _unreadCount.value;
 
-  // Streams for reactive UI
+  // Streams
   Stream<List<Chat>> get userChatsStream => _userChats.stream;
   Stream<Chat?> get selectedChatStream => _selectedChat.stream;
   Stream<int> get unreadCountStream => _unreadCount.stream;
@@ -40,25 +38,21 @@ class ChatService extends GetxService {
     return this;
   }
 
-  /// Initialize the service
   Future<void> _initialize() async {
     try {
       _appService = Get.find<AppService>();
       _authService = Get.find<AuthService>();
 
-      // Load user chats if authenticated
       if (_authService.isAuthenticated) {
         await loadUserChats();
       }
 
-      // Listen to auth state changes
       _setupAuthListener();
     } catch (e) {
       print('ChatService initialization error: $e');
     }
   }
 
-  /// Setup authentication state listener
   void _setupAuthListener() {
     _authService.authStateStream.listen((isAuthenticated) {
       if (isAuthenticated) {
@@ -72,17 +66,34 @@ class ChatService extends GetxService {
   // ==================== CHAT OPERATIONS ====================
 
   /// Get all user chats
+  /// Endpoint: GET /api/chats
   Future<ApiResponse<List<Chat>>> getUserChats() async {
     try {
       _isLoading.value = true;
 
       final response = await _makeApiRequest<List<Chat>>(
         method: 'GET',
-        endpoint: ApiConfig.endpoints.userChats,
+        endpoint: ApiConfig.endpoints.getUserChats,
         fromJson: (json) {
+          print('🔍 Raw JSON type: ${json.runtimeType}');
+          print('🔍 Raw JSON: $json');
+
           if (json is List) {
-            return json.map((e) => Chat.fromJson(e)).toList();
+            print('✅ JSON is List with ${json.length} items');
+            try {
+              final chats =
+                  json.map((e) {
+                    print('📦 Parsing chat: ${e['_id']}');
+                    return Chat.fromJson(e);
+                  }).toList();
+              print('✅ Successfully parsed ${chats.length} chats');
+              return chats;
+            } catch (e) {
+              print('❌ Error parsing chats: $e');
+              rethrow;
+            }
           }
+          print('⚠️ JSON is not a List, returning empty');
           return <Chat>[];
         },
       );
@@ -90,10 +101,19 @@ class ChatService extends GetxService {
       if (response.success && response.data != null) {
         _userChats.value = response.data!;
         _updateUnreadCount();
+        print('✅ Loaded ${response.data!.length} chats to _userChats');
+        print('✅ Current _userChats length: ${_userChats.length}');
+      } else {
+        print('❌ Response failed or data is null');
+        print('❌ Success: ${response.success}');
+        print('❌ Data: ${response.data}');
+        print('❌ Error: ${response.error}');
       }
 
       return response;
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ Error getting chats: $e');
+      print('❌ StackTrace: $stackTrace');
       return ApiResponse<List<Chat>>(
         success: false,
         error: 'Failed to get user chats: $e',
@@ -103,12 +123,39 @@ class ChatService extends GetxService {
     }
   }
 
+  /// Get chat by ID
+  /// Endpoint: GET /api/chats/{id}
+  Future<ApiResponse<Chat>> getChatById(String chatId) async {
+    try {
+      final response = await _makeApiRequest<Chat>(
+        method: 'GET',
+        endpoint: ApiConfig.endpoints.getChatById(chatId),
+        fromJson: (json) => Chat.fromJson(json),
+      );
+
+      if (response.success && response.data != null) {
+        final index = _userChats.indexWhere((c) => c.id == chatId);
+        if (index != -1) {
+          _userChats[index] = response.data!;
+        } else {
+          _userChats.add(response.data!);
+        }
+        print('✅ Loaded chat: $chatId');
+      }
+
+      return response;
+    } catch (e) {
+      print('❌ Error getting chat: $e');
+      return ApiResponse<Chat>(success: false, error: 'Failed to get chat: $e');
+    }
+  }
+
   /// Create a new chat
+  /// Endpoint: POST /api/chats
   Future<ApiResponse<Chat>> createChat(CreateChatRequest request) async {
     try {
       _isLoading.value = true;
 
-      // Validation
       if (request.participantId.isEmpty) {
         return ApiResponse<Chat>(
           success: false,
@@ -116,10 +163,11 @@ class ChatService extends GetxService {
         );
       }
 
-      // Check if chat already exists with this participant
+      // Check if chat already exists
       final existingChat = _findChatWithParticipant(request.participantId);
       if (existingChat != null) {
         _selectedChat.value = existingChat;
+        print('✅ Chat already exists');
         return ApiResponse<Chat>(
           success: true,
           data: existingChat,
@@ -129,20 +177,20 @@ class ChatService extends GetxService {
 
       final response = await _makeApiRequest<Chat>(
         method: 'POST',
-        endpoint: ApiConfig.endpoints.createChat,
+        endpoint: ApiConfig.endpoints.createUserChat,
         data: request.toJson(),
         fromJson: (json) => Chat.fromJson(json),
       );
 
       if (response.success && response.data != null) {
-        // Add to chats list
         _userChats.insert(0, response.data!);
         _selectedChat.value = response.data;
-        print('Chat created successfully');
+        print('✅ Chat created successfully');
       }
 
       return response;
     } catch (e) {
+      print('❌ Error creating chat: $e');
       return ApiResponse<Chat>(
         success: false,
         error: 'Failed to create chat: $e',
@@ -154,71 +202,26 @@ class ChatService extends GetxService {
 
   /// Get or create chat with participant
   Future<ApiResponse<Chat>> getOrCreateChat(String participantId) async {
-    // Check if chat exists
     final existingChat = _findChatWithParticipant(participantId);
     if (existingChat != null) {
       _selectedChat.value = existingChat;
       return ApiResponse<Chat>(success: true, data: existingChat);
     }
-
-    // Create new chat
     return await createChat(CreateChatRequest(participantId: participantId));
   }
 
   // ==================== MESSAGE OPERATIONS ====================
 
-  /// Get messages for a chat
-  Future<ApiResponse<List<Message>>> getChatMessages(String chatId) async {
-    try {
-      _isLoading.value = true;
-
-      // Check cache first
-      if (_messagesByChat.containsKey(chatId)) {
-        return ApiResponse<List<Message>>(
-          success: true,
-          data: _messagesByChat[chatId],
-        );
-      }
-
-      // Note: API endpoint for getting messages is not in the Postman collection
-      // You may need to add this endpoint or use WebSocket for messages
-      final response = await _makeApiRequest<List<Message>>(
-        method: 'GET',
-        endpoint: '${ApiConfig.endpoints.chats}/$chatId/messages',
-        fromJson: (json) {
-          if (json is List) {
-            return json.map((e) => Message.fromJson(e)).toList();
-          }
-          return <Message>[];
-        },
-      );
-
-      if (response.success && response.data != null) {
-        _messagesByChat[chatId] = response.data!;
-      }
-
-      return response;
-    } catch (e) {
-      return ApiResponse<List<Message>>(
-        success: false,
-        error: 'Failed to get chat messages: $e',
-      );
-    } finally {
-      _isLoading.value = false;
-    }
-  }
-
   /// Send a message
+  /// Endpoint: POST /api/chats/{chatId}/messages
   Future<ApiResponse<Message>> sendMessage({
     required String chatId,
     required String content,
-    MessageType type = MessageType.text,
-    Map<String, dynamic>? metadata,
+    String type = 'Text',
   }) async {
     try {
       _isSendingMessage.value = true;
 
-      // Validation
       if (content.trim().isEmpty) {
         return ApiResponse<Message>(
           success: false,
@@ -226,38 +229,24 @@ class ChatService extends GetxService {
         );
       }
 
-      final messageData = {
-        'chatId': chatId,
-        'content': content.trim(),
-        'type': type.value,
-        if (metadata != null) 'metadata': metadata,
-      };
+      final messageData = {'content': content.trim(), 'type': type};
 
-      // Note: API endpoint for sending messages is not in the Postman collection
-      // This would typically be handled via WebSocket in real-time chat
       final response = await _makeApiRequest<Message>(
         method: 'POST',
-        endpoint: '${ApiConfig.endpoints.chats}/$chatId/messages',
+        endpoint: ApiConfig.endpoints.sendMessage(chatId),
         data: messageData,
         fromJson: (json) => Message.fromJson(json),
       );
 
       if (response.success && response.data != null) {
-        // Add message to cache
-        if (_messagesByChat.containsKey(chatId)) {
-          _messagesByChat[chatId]!.add(response.data!);
-        } else {
-          _messagesByChat[chatId] = [response.data!];
-        }
-
-        // Update chat's last message
-        _updateChatLastMessage(chatId, response.data!);
-
-        print('Message sent successfully');
+        // Reload chat to get updated messages
+        await getChatById(chatId);
+        print('✅ Message sent successfully');
       }
 
       return response;
     } catch (e) {
+      print('❌ Error sending message: $e');
       return ApiResponse<Message>(
         success: false,
         error: 'Failed to send message: $e',
@@ -267,203 +256,94 @@ class ChatService extends GetxService {
     }
   }
 
-  /// Mark messages as read
-  Future<ApiResponse<dynamic>> markMessagesAsRead(String chatId) async {
+  /// Mark message as read
+  /// Endpoint: PUT /api/chats/{chatId}/messages/{messageId}
+  Future<ApiResponse<dynamic>> markMessageAsRead(
+    String chatId,
+    String messageId,
+  ) async {
     try {
-      // Note: API endpoint for marking messages as read is not in Postman collection
+      final requestData = {'markAsRead': true, 'chatId': chatId};
+
       final response = await _makeApiRequest(
         method: 'PUT',
-        endpoint: '${ApiConfig.endpoints.chats}/$chatId/read',
+        endpoint: ApiConfig.endpoints.markAsRead(chatId, messageId),
+        data: requestData,
       );
 
       if (response.success) {
-        // Update local messages
-        if (_messagesByChat.containsKey(chatId)) {
-          _messagesByChat[chatId] =
-              _messagesByChat[chatId]!
-                  .map((msg) => msg.copyWith(isRead: true))
-                  .toList();
-        }
-
+        // Reload chat to update read status
+        await getChatById(chatId);
         _updateUnreadCount();
-        print('Messages marked as read');
+        print('✅ Message marked as read');
       }
 
       return response;
     } catch (e) {
+      print('❌ Error marking as read: $e');
       return ApiResponse<dynamic>(
         success: false,
-        error: 'Failed to mark messages as read: $e',
+        error: 'Failed to mark message as read: $e',
       );
     }
-  }
-
-  // ==================== REAL-TIME MESSAGE HANDLING ====================
-  // Note: These methods would integrate with WebSocket for real-time updates
-
-  /// Add received message (called when message received via WebSocket)
-  void addReceivedMessage(Message message) {
-    final chatId = message.chatId;
-
-    // Add to messages cache
-    if (_messagesByChat.containsKey(chatId)) {
-      _messagesByChat[chatId]!.add(message);
-    } else {
-      _messagesByChat[chatId] = [message];
-    }
-
-    // Update chat's last message
-    _updateChatLastMessage(chatId, message);
-
-    // Update unread count if message is from other user
-    if (message.senderId != _authService.currentUser?.id) {
-      _updateUnreadCount();
-    }
-  }
-
-  /// Update message status (for read receipts, delivery status, etc.)
-  void updateMessageStatus(String messageId, {bool? isRead}) {
-    for (final messages in _messagesByChat.values) {
-      final index = messages.indexWhere((m) => m.id == messageId);
-      if (index != -1) {
-        messages[index] = messages[index].copyWith(isRead: isRead);
-        break;
-      }
-    }
-
-    if (isRead == true) {
-      _updateUnreadCount();
-    }
-  }
-
-  // ==================== CHAT FILTERING & SORTING ====================
-
-  /// Get active chats
-  List<Chat> getActiveChats() {
-    return _userChats.where((chat) => chat.isActive).toList();
-  }
-
-  /// Get chats with unread messages
-  List<Chat> getChatsWithUnreadMessages() {
-    return _userChats.where((chat) {
-      final messages = _messagesByChat[chat.id];
-      if (messages == null) return false;
-
-      return messages.any(
-        (msg) => !msg.isRead && msg.senderId != _authService.currentUser?.id,
-      );
-    }).toList();
-  }
-
-  /// Search chats by participant name or last message
-  List<Chat> searchChats(String query) {
-    if (query.trim().isEmpty) return _userChats;
-
-    final lowerQuery = query.toLowerCase();
-
-    return _userChats.where((chat) {
-      // Search in last message content
-      if (chat.lastMessage?.content.toLowerCase().contains(lowerQuery) ??
-          false) {
-        return true;
-      }
-
-      // Note: To search by participant name, you'd need user data
-      // This would require additional API calls or caching user info
-      return false;
-    }).toList();
-  }
-
-  /// Sort chats by last message date
-  List<Chat> sortChatsByDate(List<Chat> chats, {bool descending = true}) {
-    final sorted = List<Chat>.from(chats);
-    sorted.sort((a, b) {
-      final dateA = a.lastMessage?.createdAt ?? a.updatedAt ?? a.createdAt;
-      final dateB = b.lastMessage?.createdAt ?? b.updatedAt ?? b.createdAt;
-
-      if (dateA == null || dateB == null) return 0;
-
-      return descending ? dateB.compareTo(dateA) : dateA.compareTo(dateB);
-    });
-    return sorted;
-  }
-
-  // ==================== MESSAGE FILTERING ====================
-
-  /// Get messages by chat
-  List<Message> getMessagesByChat(String chatId) {
-    return _messagesByChat[chatId] ?? [];
-  }
-
-  /// Get unread messages for a chat
-  List<Message> getUnreadMessages(String chatId) {
-    final messages = _messagesByChat[chatId] ?? [];
-    return messages
-        .where(
-          (msg) => !msg.isRead && msg.senderId != _authService.currentUser?.id,
-        )
-        .toList();
-  }
-
-  /// Get messages by type
-  List<Message> getMessagesByType(String chatId, MessageType type) {
-    final messages = _messagesByChat[chatId] ?? [];
-    return messages.where((msg) => msg.type == type).toList();
-  }
-
-  /// Get media messages (images and photos)
-  List<Message> getMediaMessages(String chatId) {
-    final messages = _messagesByChat[chatId] ?? [];
-    return messages
-        .where(
-          (msg) =>
-              msg.type == MessageType.image || msg.type == MessageType.photo,
-        )
-        .toList();
-  }
-
-  // ==================== STATISTICS ====================
-
-  /// Get total unread message count
-  int getTotalUnreadCount() {
-    int count = 0;
-
-    for (final chat in _userChats) {
-      final messages = _messagesByChat[chat.id];
-      if (messages != null) {
-        count +=
-            messages
-                .where(
-                  (msg) =>
-                      !msg.isRead &&
-                      msg.senderId != _authService.currentUser?.id,
-                )
-                .length;
-      }
-    }
-
-    return count;
-  }
-
-  /// Get unread count for specific chat
-  int getUnreadCountForChat(String chatId) {
-    final messages = _messagesByChat[chatId] ?? [];
-    return messages
-        .where(
-          (msg) => !msg.isRead && msg.senderId != _authService.currentUser?.id,
-        )
-        .length;
-  }
-
-  /// Get total message count
-  int getTotalMessageCount() {
-    return _messagesByChat.values.fold<int>(
-      0,
-      (sum, messages) => sum + messages.length,
-    );
   }
 
   // ==================== HELPER METHODS ====================
+
+  /// Get messages for a chat
+  List<Message> getMessagesByChat(String chatId) {
+    final chat = _userChats.firstWhereOrNull((c) => c.id == chatId);
+    return chat?.messages ?? [];
+  }
+
+  /// Get unread count for a chat
+  int getUnreadCountForChat(String chatId) {
+    final chat = _userChats.firstWhereOrNull((c) => c.id == chatId);
+    return chat?.unreadCount ?? 0;
+  }
+
+  /// Get total unread count
+  int getTotalUnreadCount() {
+    return _userChats.fold<int>(0, (sum, chat) => sum + chat.unreadCount);
+  }
+
+  /// Find chat with specific participant
+  Chat? _findChatWithParticipant(String participantId) {
+    return _userChats.firstWhereOrNull(
+      (chat) => chat.participants.any((p) => p.id == participantId),
+    );
+  }
+
+  /// Get other participant in chat
+  Participant? getOtherParticipant(Chat chat) {
+    if (_authService.currentUser == null) return null;
+
+    final currentUserId = _authService.currentUser!.id;
+    return chat.participants.firstWhereOrNull((p) => p.id != currentUserId);
+  }
+
+  /// Get other participant ID
+  String? getOtherParticipantId(Chat chat) {
+    final participant = getOtherParticipant(chat);
+    return participant?.id;
+  }
+
+  /// Update unread count
+  void _updateUnreadCount() {
+    _unreadCount.value = getTotalUnreadCount();
+  }
+
+  /// Clear all chats
+  void _clearAllChats() {
+    _userChats.clear();
+    _selectedChat.value = null;
+    _unreadCount.value = 0;
+  }
+
+  /// Set selected chat
+  void setSelectedChat(Chat? chat) {
+    _selectedChat.value = chat;
+  }
 
   /// Load user chats
   Future<void> loadUserChats() async {
@@ -475,105 +355,38 @@ class ChatService extends GetxService {
     await loadUserChats();
   }
 
-  /// Find chat with specific participant
-  Chat? _findChatWithParticipant(String participantId) {
-    return _userChats.firstWhereOrNull(
-      (chat) => chat.participants.contains(participantId),
-    );
-  }
+  /// Search chats
+  List<Chat> searchChats(String query) {
+    if (query.trim().isEmpty) return _userChats;
 
-  /// Update chat's last message
-  void _updateChatLastMessage(String chatId, Message message) {
-    final index = _userChats.indexWhere((chat) => chat.id == chatId);
-    if (index != -1) {
-      _userChats[index] = _userChats[index].copyWith(
-        lastMessage: message,
-        updatedAt: DateTime.now(),
+    final lowerQuery = query.toLowerCase();
+    return _userChats.where((chat) {
+      // Search in last message
+      final lastMsg = chat.lastMessage?.content.toLowerCase() ?? '';
+      if (lastMsg.contains(lowerQuery)) return true;
+
+      // Search in participant names
+      return chat.participants.any(
+        (p) => p.name.toLowerCase().contains(lowerQuery),
       );
-
-      // Move chat to top of list
-      final chat = _userChats.removeAt(index);
-      _userChats.insert(0, chat);
-    }
+    }).toList();
   }
 
-  /// Update unread count
-  void _updateUnreadCount() {
-    _unreadCount.value = getTotalUnreadCount();
-  }
+  /// Sort chats by date
+  List<Chat> sortChatsByDate(List<Chat> chats, {bool descending = true}) {
+    final sorted = List<Chat>.from(chats);
+    sorted.sort((a, b) {
+      final dateA = a.lastMessage?.createdAt ?? a.updatedAt ?? a.createdAt;
+      final dateB = b.lastMessage?.createdAt ?? b.updatedAt ?? b.createdAt;
 
-  /// Clear all chats
-  void _clearAllChats() {
-    _userChats.clear();
-    _messagesByChat.clear();
-    _selectedChat.value = null;
-    _unreadCount.value = 0;
-  }
-
-  /// Set selected chat
-  void setSelectedChat(Chat? chat) {
-    _selectedChat.value = chat;
-
-    // Load messages for selected chat if not already loaded
-    if (chat != null && !_messagesByChat.containsKey(chat.id)) {
-      getChatMessages(chat.id!);
-    }
-  }
-
-  /// Clear messages cache for a chat
-  void clearChatMessages(String chatId) {
-    _messagesByChat.remove(chatId);
-  }
-
-  /// Clear all message caches
-  void clearAllMessageCaches() {
-    _messagesByChat.clear();
-  }
-
-  /// Check if chat has other participant
-  String? getOtherParticipantId(Chat chat) {
-    if (_authService.currentUser == null) return null;
-
-    final currentUserId = _authService.currentUser!.id;
-    return chat.participants.firstWhereOrNull((id) => id != currentUserId);
-  }
-
-  /// Delete chat (archive)
-  Future<ApiResponse<dynamic>> deleteChat(String chatId) async {
-    try {
-      _isLoading.value = true;
-
-      // Note: Delete endpoint not in Postman collection
-      final response = await _makeApiRequest(
-        method: 'DELETE',
-        endpoint: '${ApiConfig.endpoints.chats}/$chatId',
-      );
-
-      if (response.success) {
-        _userChats.removeWhere((chat) => chat.id == chatId);
-        _messagesByChat.remove(chatId);
-
-        if (_selectedChat.value?.id == chatId) {
-          _selectedChat.value = null;
-        }
-
-        print('Chat deleted successfully');
-      }
-
-      return response;
-    } catch (e) {
-      return ApiResponse<dynamic>(
-        success: false,
-        error: 'Failed to delete chat: $e',
-      );
-    } finally {
-      _isLoading.value = false;
-    }
+      if (dateA == null || dateB == null) return 0;
+      return descending ? dateB.compareTo(dateA) : dateA.compareTo(dateB);
+    });
+    return sorted;
   }
 
   // ==================== API REQUEST METHOD ====================
 
-  /// Generic API request method
   Future<ApiResponse<T>> _makeApiRequest<T>({
     required String method,
     required String endpoint,
@@ -581,8 +394,8 @@ class ChatService extends GetxService {
     T Function(dynamic)? fromJson,
   }) async {
     try {
-      // Check authentication
       if (_authService.authToken == null) {
+        print('❌ No auth token available');
         return ApiResponse<T>(
           success: false,
           error: 'Authentication required',
@@ -593,8 +406,11 @@ class ChatService extends GetxService {
       final url = '${ApiConfig.fullApiUrl}$endpoint';
       final headers = ApiConfig.authHeaders(_authService.authToken!);
 
-      final getConnect = GetConnect(timeout: ApiConfig.connectTimeout);
+      print('🌐 $method $url');
+      print('🔑 Token: ${_authService.authToken?.substring(0, 20)}...');
+      if (data != null) print('📤 Data: $data');
 
+      final getConnect = GetConnect(timeout: ApiConfig.connectTimeout);
       Response response;
 
       switch (method.toUpperCase()) {
@@ -614,43 +430,59 @@ class ChatService extends GetxService {
           throw Exception('Unsupported HTTP method: $method');
       }
 
+      print('📥 Status: ${response.statusCode}');
+      print('📥 Response body: ${response.body}');
+
       return _handleResponse<T>(response, fromJson);
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ API Error: $e');
+      print('❌ StackTrace: $stackTrace');
       return _handleError<T>(e);
     }
   }
 
-  /// Handle HTTP response
   ApiResponse<T> _handleResponse<T>(
     Response response,
     T Function(dynamic)? fromJson,
   ) {
     try {
       final statusCode = response.statusCode ?? 0;
+      print('🔍 Status Code: $statusCode');
 
       if (statusCode >= 200 && statusCode < 300) {
         final responseData = response.body;
+        print('🔍 Response Data Type: ${responseData.runtimeType}');
+        print('🔍 Response Data: $responseData');
 
-        return ApiResponse<T>(
-          success: true,
-          statusCode: statusCode,
-          message: responseData['message'],
-          data:
-              fromJson != null && responseData['data'] != null
-                  ? fromJson(responseData['data'])
-                  : responseData['data'],
-          metadata: responseData['metadata'],
-        );
+        if (responseData is Map && responseData['success'] == true) {
+          print('✅ Success: ${responseData['message'] ?? 'OK'}');
+
+          final data = responseData['data'];
+          print('🔍 Data field type: ${data.runtimeType}');
+          print('🔍 Data field: $data');
+
+          return ApiResponse<T>(
+            success: true,
+            statusCode: statusCode,
+            message: responseData['message'],
+            data: fromJson != null && data != null ? fromJson(data) : data,
+          );
+        } else {
+          print('⚠️ Response success is not true or not a Map');
+          print('⚠️ Response data: $responseData');
+        }
       }
 
       final errorData = response.body ?? {};
+      print('❌ Error: ${errorData['message'] ?? 'Unknown error'}');
       return ApiResponse<T>(
         success: false,
         statusCode: statusCode,
         error: errorData['message'] ?? errorData['error'] ?? 'Unknown error',
-        message: errorData['message'],
       );
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ Parse Error: $e');
+      print('❌ StackTrace: $stackTrace');
       return ApiResponse<T>(
         success: false,
         error: 'Failed to parse response: $e',
@@ -659,7 +491,6 @@ class ChatService extends GetxService {
     }
   }
 
-  /// Handle request errors
   ApiResponse<T> _handleError<T>(dynamic error) {
     String errorMessage;
 

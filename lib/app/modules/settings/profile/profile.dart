@@ -212,15 +212,15 @@ class Profile extends StatelessWidget {
               return SizedBox(
                 height: 240,
                 child: ListView.builder(
-                  padding: EdgeInsets.symmetric(horizontal: 12),
+                  padding: EdgeInsets.symmetric(horizontal: 4),
                   scrollDirection: Axis.horizontal,
-                  itemExtent: 240,
+                  itemExtent: 175,
                   itemCount: images.length,
                   itemBuilder: (BuildContext context, int index) {
                     final imageUrl = images[index].url;
 
                     return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 5),
                       child: CommonImageView(url: imageUrl, radius: 8),
                     );
                   },

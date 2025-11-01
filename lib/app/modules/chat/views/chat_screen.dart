@@ -4,7 +4,6 @@ import 'package:photo_bug/app/core/constants/app_colors.dart';
 import 'package:photo_bug/app/core/constants/app_images.dart';
 import 'package:photo_bug/app/core/constants/app_sizes.dart';
 import 'package:photo_bug/app/modules/chat/controller/chat_controllers.dart';
-import 'package:photo_bug/app/modules/user_events/widgets/other_user_profile.dart';
 import 'package:photo_bug/app/core/common_widget/common_image_view_widget.dart';
 import 'package:photo_bug/app/core/common_widget/custom_chat_bubble_widget.dart';
 import 'package:photo_bug/app/core/common_widget/my_button_widget.dart';
@@ -45,35 +44,32 @@ class ChatScreen extends GetView<ChatController> {
       ),
       title: Row(
         children: [
-          GestureDetector(
-            onTap: () => Get.to(() => const OtherUserProfile()),
-            child: Stack(
-              children: [
-                Obx(
-                  () => CommonImageView(
-                    url: controller.otherUserImage.value,
-                    height: 36,
-                    width: 36,
-                    radius: 100,
-                    borderWidth: 1.5,
-                    borderColor: kInputBorderColor,
-                  ),
+          Stack(
+            children: [
+              Obx(
+                () => CommonImageView(
+                  url: controller.otherUserImage.value,
+                  height: 36,
+                  width: 36,
+                  radius: 100,
+                  borderWidth: 1.5,
+                  borderColor: kInputBorderColor,
                 ),
-                Obx(
-                  () =>
-                      controller.otherUserOnline.value
-                          ? Positioned(
-                            bottom: 2,
-                            right: 2,
-                            child: Image.asset(
-                              Assets.imagesOnlineIndicator,
-                              height: 6,
-                            ),
-                          )
-                          : const SizedBox.shrink(),
-                ),
-              ],
-            ),
+              ),
+              Obx(
+                () =>
+                    controller.otherUserOnline.value
+                        ? Positioned(
+                          bottom: 2,
+                          right: 2,
+                          child: Image.asset(
+                            Assets.imagesOnlineIndicator,
+                            height: 6,
+                          ),
+                        )
+                        : const SizedBox.shrink(),
+              ),
+            ],
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -102,7 +98,18 @@ class ChatScreen extends GetView<ChatController> {
               ],
             ),
           ),
-          Image.asset(Assets.imagesMenuVertical, height: 20),
+          PopupMenuButton<String>(
+            icon: Image.asset(Assets.imagesMenuVertical, height: 20),
+            onSelected: (value) {
+              if (value == 'refresh') {
+                controller.refreshMessages();
+              }
+            },
+            itemBuilder:
+                (context) => [
+                  const PopupMenuItem(value: 'refresh', child: Text('Refresh')),
+                ],
+          ),
           const SizedBox(width: 20),
         ],
       ),
@@ -111,20 +118,42 @@ class ChatScreen extends GetView<ChatController> {
 
   Widget _buildMessageList() {
     return Obx(() {
-      if (controller.isLoading.value) {
+      if (controller.isLoading.value && controller.messages.isEmpty) {
         return const Center(child: CircularProgressIndicator());
       }
 
       if (controller.messages.isEmpty) {
-        return const Center(
-          child: Text('No messages yet. Start a conversation!'),
+        return Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.chat_bubble_outline,
+                size: 64,
+                color: Colors.grey[300],
+              ),
+              const SizedBox(height: 16),
+              MyText(
+                text: 'No messages yet',
+                size: 16,
+                color: kQuaternaryColor,
+                weight: FontWeight.w500,
+              ),
+              const SizedBox(height: 8),
+              MyText(
+                text: 'Start a conversation!',
+                size: 14,
+                color: kQuaternaryColor,
+              ),
+            ],
+          ),
         );
       }
 
       return ListView.builder(
         controller: controller.scrollController,
         padding: AppSizes.DEFAULT,
-        itemCount: controller.messages.length + 1, // +1 for date header
+        itemCount: controller.messages.length + 1,
         itemBuilder: (context, index) {
           if (index == 0) {
             // Date header at top
@@ -144,14 +173,39 @@ class ChatScreen extends GetView<ChatController> {
           final message = controller.messages[index - 1];
           final isMe = controller.isMyMessage(message);
 
-          return CustomChatBubbles(
-            isMe: isMe,
-            profileImage:
-                isMe
-                    ? controller.otherUserImage.value
-                    : controller.otherUserImage.value,
-            name: isMe ? 'You' : controller.otherUserName.value,
-            msg: message.content,
+          // Show date separator if day changed
+          Widget? dateSeparator;
+          if (index > 1) {
+            final prevMessage = controller.messages[index - 2];
+            if (_shouldShowDateSeparator(
+              prevMessage.createdAt,
+              message.createdAt,
+            )) {
+              dateSeparator = Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: MyText(
+                  text: _formatDateHeader(message.createdAt ?? DateTime.now()),
+                  size: 12,
+                  color: kQuaternaryColor,
+                  textAlign: TextAlign.center,
+                ),
+              );
+            }
+          }
+
+          return Column(
+            children: [
+              if (dateSeparator != null) dateSeparator,
+              CustomChatBubbles(
+                isMe: isMe,
+                profileImage: controller.otherUserImage.value,
+                name: isMe ? 'You' : controller.otherUserName.value,
+                msg: message.content,
+                time: _formatMessageTime(message.createdAt),
+                isRead: message.isRead,
+                isOnline: controller.otherUserOnline.value,
+              ),
+            ],
           );
         },
       );
@@ -162,14 +216,15 @@ class ChatScreen extends GetView<ChatController> {
     return SendField(
       controller: controller.messageController,
       onFieldSubmitted: (value) => controller.sendMessage(),
-      onChanged: (value) {
-        if (value.isNotEmpty) {
-          controller.onTyping();
-        } else {
-          controller.onStopTyping();
-        }
-      },
     );
+  }
+
+  bool _shouldShowDateSeparator(DateTime? prev, DateTime? current) {
+    if (prev == null || current == null) return false;
+
+    return prev.year != current.year ||
+        prev.month != current.month ||
+        prev.day != current.day;
   }
 
   String _formatDateHeader(DateTime dateTime) {
@@ -178,38 +233,40 @@ class ChatScreen extends GetView<ChatController> {
     final messageDate = DateTime(dateTime.year, dateTime.month, dateTime.day);
 
     if (messageDate == today) {
-      return 'Today at ${_formatTime(dateTime)}';
+      return 'Today';
     } else if (messageDate == today.subtract(const Duration(days: 1))) {
-      return 'Yesterday at ${_formatTime(dateTime)}';
+      return 'Yesterday';
     } else {
-      return '${dateTime.day} ${_getMonthName(dateTime.month)} ${dateTime.year} at ${_formatTime(dateTime)}';
+      return '${dateTime.day} ${_getMonthName(dateTime.month)} ${dateTime.year}';
     }
   }
 
-  String _formatTime(DateTime dateTime) {
+  String _formatMessageTime(DateTime? dateTime) {
+    if (dateTime == null) return '';
+
     final hour =
         dateTime.hour == 0
             ? 12
             : (dateTime.hour > 12 ? dateTime.hour - 12 : dateTime.hour);
     final minute = dateTime.minute.toString().padLeft(2, '0');
     final period = dateTime.hour < 12 ? 'AM' : 'PM';
-    return '$hour:$minute$period';
+    return '$hour:$minute $period';
   }
 
   String _getMonthName(int month) {
     const months = [
-      'January',
-      'February',
-      'March',
-      'April',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
       'May',
-      'June',
-      'July',
-      'August',
-      'September',
-      'October',
-      'November',
-      'December',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return months[month - 1];
   }

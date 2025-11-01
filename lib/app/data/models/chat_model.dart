@@ -1,31 +1,43 @@
 class Chat {
   final String? id;
-  final List<String> participants;
-  final Message? lastMessage;
+  final List<Participant> participants;
+  final List<LastSeen> lastSeen;
+  final List<Message> messages;
   final DateTime? createdAt;
   final DateTime? updatedAt;
-  final bool isActive;
+  final int unreadCount;
 
   Chat({
     this.id,
     required this.participants,
-    this.lastMessage,
+    this.lastSeen = const [],
+    this.messages = const [],
     this.createdAt,
     this.updatedAt,
-    this.isActive = true,
+    this.unreadCount = 0,
   });
+
+  // Get last message
+  Message? get lastMessage => messages.isNotEmpty ? messages.last : null;
 
   factory Chat.fromJson(Map<String, dynamic> json) {
     return Chat(
-      id: json['_id'] ?? json['id'],
+      id: json['_id'],
       participants:
-          json['participants'] != null
-              ? List<String>.from(json['participants'])
-              : [],
-      lastMessage:
-          json['lastMessage'] != null
-              ? Message.fromJson(json['lastMessage'])
-              : null,
+          (json['participants'] as List?)
+              ?.map((e) => Participant.fromJson(e))
+              .toList() ??
+          [],
+      lastSeen:
+          (json['lastSeen'] as List?)
+              ?.map((e) => LastSeen.fromJson(e))
+              .toList() ??
+          [],
+      messages:
+          (json['messages'] as List?)
+              ?.map((e) => Message.fromJson(e))
+              .toList() ??
+          [],
       createdAt:
           json['createdAt'] != null
               ? DateTime.tryParse(json['createdAt'])
@@ -34,42 +46,45 @@ class Chat {
           json['updatedAt'] != null
               ? DateTime.tryParse(json['updatedAt'])
               : null,
-      isActive: json['isActive'] ?? true,
+      unreadCount: json['unreadCount'] ?? 0,
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
       if (id != null) '_id': id,
-      'participants': participants,
-      if (lastMessage != null) 'lastMessage': lastMessage!.toJson(),
+      'participants': participants.map((e) => e.toJson()).toList(),
+      'lastSeen': lastSeen.map((e) => e.toJson()).toList(),
+      'messages': messages.map((e) => e.toJson()).toList(),
       if (createdAt != null) 'createdAt': createdAt!.toIso8601String(),
       if (updatedAt != null) 'updatedAt': updatedAt!.toIso8601String(),
-      'isActive': isActive,
+      'unreadCount': unreadCount,
     };
   }
 
   Chat copyWith({
     String? id,
-    List<String>? participants,
-    Message? lastMessage,
+    List<Participant>? participants,
+    List<LastSeen>? lastSeen,
+    List<Message>? messages,
     DateTime? createdAt,
     DateTime? updatedAt,
-    bool? isActive,
+    int? unreadCount,
   }) {
     return Chat(
       id: id ?? this.id,
       participants: participants ?? this.participants,
-      lastMessage: lastMessage ?? this.lastMessage,
+      lastSeen: lastSeen ?? this.lastSeen,
+      messages: messages ?? this.messages,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
-      isActive: isActive ?? this.isActive,
+      unreadCount: unreadCount ?? this.unreadCount,
     );
   }
 
   @override
   String toString() {
-    return 'Chat{id: $id, participants: $participants, isActive: $isActive}';
+    return 'Chat{id: $id, participants: ${participants.length}, messages: ${messages.length}}';
   }
 
   @override
@@ -81,40 +96,140 @@ class Chat {
   int get hashCode => id.hashCode;
 }
 
+class Participant {
+  final String id;
+  final String name;
+  final String userName;
+  final String profilePicture;
+
+  Participant({
+    required this.id,
+    required this.name,
+    required this.userName,
+    required this.profilePicture,
+  });
+
+  factory Participant.fromJson(Map<String, dynamic> json) {
+    return Participant(
+      id: json['_id'] ?? '',
+      name: json['name'] ?? '',
+      userName: json['user_name'] ?? '',
+      profilePicture: json['profile_picture'] ?? '',
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      '_id': id,
+      'name': name,
+      'user_name': userName,
+      'profile_picture': profilePicture,
+    };
+  }
+}
+
+class LastSeen {
+  final User user;
+  final DateTime timestamp;
+  final String? id;
+
+  LastSeen({required this.user, required this.timestamp, this.id});
+
+  factory LastSeen.fromJson(Map<String, dynamic> json) {
+    return LastSeen(
+      user: User.fromJson(json['user']),
+      timestamp: DateTime.tryParse(json['timestamp']) ?? DateTime.now(),
+      id: json['_id'],
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'user': user.toJson(),
+      'timestamp': timestamp.toIso8601String(),
+      if (id != null) '_id': id,
+    };
+  }
+}
+
+class User {
+  final String id;
+  final String name;
+  final String userName;
+
+  User({required this.id, required this.name, required this.userName});
+
+  factory User.fromJson(Map<String, dynamic> json) {
+    return User(
+      id: json['_id'] ?? '',
+      name: json['name'] ?? '',
+      userName: json['user_name'] ?? '',
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'_id': id, 'name': name, 'user_name': userName};
+  }
+}
+
 class Message {
   final String? id;
   final String chatId;
-  final String senderId;
+  final String createdBy;
   final String content;
-  final MessageType type;
+  final String type;
   final DateTime? createdAt;
   final bool isRead;
-  final Map<String, dynamic>? metadata;
 
   Message({
     this.id,
     required this.chatId,
-    required this.senderId,
+    required this.createdBy,
     required this.content,
-    this.type = MessageType.text,
+    this.type = 'Text',
     this.createdAt,
     this.isRead = false,
-    this.metadata,
   });
 
   factory Message.fromJson(Map<String, dynamic> json) {
+    // CRITICAL FIX: Handle both String and Object for created_by
+    String createdById;
+    if (json['created_by'] is String) {
+      // Case 1: created_by is just a String ID (in chat list)
+      createdById = json['created_by'];
+    } else if (json['created_by'] is Map) {
+      // Case 2: created_by is an Object with _id (in send message response)
+      createdById = json['created_by']['_id'] ?? '';
+    } else {
+      createdById = '';
+    }
+
+    // CRITICAL FIX: Handle both cases for chatId
+    String chatIdValue;
+    if (json['chat'] is Map) {
+      // Case 1: chat is an object with _id
+      chatIdValue = json['chat']['_id'] ?? '';
+    } else if (json['chat'] is String) {
+      // Case 2: chat is just a String ID
+      chatIdValue = json['chat'];
+    } else if (json['chatId'] != null) {
+      // Case 3: chatId field exists
+      chatIdValue = json['chatId'];
+    } else {
+      chatIdValue = '';
+    }
+
     return Message(
-      id: json['_id'] ?? json['id'],
-      chatId: json['chatId'] ?? json['chat_id'] ?? '',
-      senderId: json['senderId'] ?? json['sender_id'] ?? '',
+      id: json['_id'],
+      chatId: chatIdValue,
+      createdBy: createdById,
       content: json['content'] ?? '',
-      type: MessageTypeExtension.fromString(json['type'] ?? 'text'),
+      type: json['type'] ?? 'Text',
       createdAt:
-          json['createdAt'] != null
-              ? DateTime.tryParse(json['createdAt'])
+          json['created_at'] != null
+              ? DateTime.tryParse(json['created_at'])
               : null,
-      isRead: json['isRead'] ?? json['is_read'] ?? false,
-      metadata: json['metadata'],
+      isRead: json['isRead'] ?? false,
     );
   }
 
@@ -122,40 +237,37 @@ class Message {
     return {
       if (id != null) '_id': id,
       'chatId': chatId,
-      'senderId': senderId,
+      'created_by': createdBy,
       'content': content,
-      'type': type.value,
-      if (createdAt != null) 'createdAt': createdAt!.toIso8601String(),
+      'type': type,
+      if (createdAt != null) 'created_at': createdAt!.toIso8601String(),
       'isRead': isRead,
-      if (metadata != null) 'metadata': metadata,
     };
   }
 
   Message copyWith({
     String? id,
     String? chatId,
-    String? senderId,
+    String? createdBy,
     String? content,
-    MessageType? type,
+    String? type,
     DateTime? createdAt,
     bool? isRead,
-    Map<String, dynamic>? metadata,
   }) {
     return Message(
       id: id ?? this.id,
       chatId: chatId ?? this.chatId,
-      senderId: senderId ?? this.senderId,
+      createdBy: createdBy ?? this.createdBy,
       content: content ?? this.content,
       type: type ?? this.type,
       createdAt: createdAt ?? this.createdAt,
       isRead: isRead ?? this.isRead,
-      metadata: metadata ?? this.metadata,
     );
   }
 
   @override
   String toString() {
-    return 'Message{id: $id, senderId: $senderId, content: $content, type: $type}';
+    return 'Message{id: $id, content: $content, type: $type}';
   }
 
   @override
@@ -178,33 +290,26 @@ class CreateChatRequest {
   }
 }
 
-// Message Types Enum
-enum MessageType { text, image, file, photo }
+// Send Message Request Model
+class SendMessageRequest {
+  final String content;
+  final String type;
 
-extension MessageTypeExtension on MessageType {
-  String get value {
-    switch (this) {
-      case MessageType.text:
-        return 'text';
-      case MessageType.image:
-        return 'image';
-      case MessageType.file:
-        return 'file';
-      case MessageType.photo:
-        return 'photo';
-    }
+  SendMessageRequest({required this.content, this.type = 'Text'});
+
+  Map<String, dynamic> toJson() {
+    return {'content': content, 'type': type};
   }
+}
 
-  static MessageType fromString(String value) {
-    switch (value.toLowerCase()) {
-      case 'image':
-        return MessageType.image;
-      case 'file':
-        return MessageType.file;
-      case 'photo':
-        return MessageType.photo;
-      default:
-        return MessageType.text;
-    }
+// Mark as Read Request Model
+class MarkAsReadRequest {
+  final bool markAsRead;
+  final String chatId;
+
+  MarkAsReadRequest({this.markAsRead = true, required this.chatId});
+
+  Map<String, dynamic> toJson() {
+    return {'markAsRead': markAsRead, 'chatId': chatId};
   }
 }

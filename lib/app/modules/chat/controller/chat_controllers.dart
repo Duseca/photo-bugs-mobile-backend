@@ -1,9 +1,8 @@
-// controllers/chat_controller.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:photo_bug/app/data/models/chat_model.dart';
 import 'package:photo_bug/app/routes/app_pages.dart';
-
 import 'package:photo_bug/app/services/auth/auth_service.dart';
 import 'package:photo_bug/app/services/chat_service/chat_service.dart';
 
@@ -14,22 +13,22 @@ class ChatController extends GetxController {
   // Observable variables
   final RxList<Message> messages = <Message>[].obs;
   final RxBool isLoading = false.obs;
-  final RxBool isTyping = false.obs;
   final RxString currentChatId = ''.obs;
   final RxString otherUserName = ''.obs;
   final RxString otherUserImage = ''.obs;
   final RxBool otherUserOnline = false.obs;
-  final Rx<Chat?> currentChat = Rx<Chat?>(null);
 
-  // Text controller for message input
+  // Text controller
   final TextEditingController messageController = TextEditingController();
   final ScrollController scrollController = ScrollController();
+
+  // Timer for auto-refresh
+  Timer? _refreshTimer;
 
   @override
   void onInit() {
     super.onInit();
 
-    // Get arguments passed from previous screen
     final arguments = Get.arguments;
     if (arguments != null) {
       currentChatId.value = arguments['chatId'] ?? '';
@@ -39,235 +38,319 @@ class ChatController extends GetxController {
     }
 
     loadMessages();
+    //_startAutoRefresh();
   }
 
   @override
   void onClose() {
+    _refreshTimer?.cancel();
     messageController.dispose();
     scrollController.dispose();
     super.onClose();
   }
 
-  // Load messages for current chat
-  void loadMessages() async {
+  /// Start auto-refresh for real-time updates
+  void _startAutoRefresh() {
+    _refreshTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+      if (currentChatId.value.isNotEmpty) {
+        _refreshMessages();
+      }
+    });
+  }
+
+  /// Refresh messages silently
+  Future<void> _refreshMessages() async {
+    if (currentChatId.value.isEmpty) return;
+
+    try {
+      final response = await _chatService.getChatById(currentChatId.value);
+      if (response.success && response.data != null) {
+        final newMessages = response.data!.messages;
+        if (newMessages.length != messages.length) {
+          messages.assignAll(newMessages);
+          scrollToBottom();
+        }
+      }
+    } catch (e) {
+      // Silently fail
+    }
+  }
+
+  /// Load messages for current chat
+  Future<void> loadMessages() async {
     if (currentChatId.value.isEmpty) return;
 
     isLoading.value = true;
     try {
-      final response = await _chatService.getChatMessages(currentChatId.value);
+      final response = await _chatService.getChatById(currentChatId.value);
 
       if (response.success && response.data != null) {
-        // Reverse messages so newest appear at bottom
-        messages.assignAll(response.data!.reversed.toList());
+        messages.assignAll(response.data!.messages);
 
-        // Mark messages as read
-        await _chatService.markMessagesAsRead(currentChatId.value);
-
-        // Scroll to bottom after loading
         Future.delayed(const Duration(milliseconds: 100), () {
           scrollToBottom();
         });
       } else {
-        Get.snackbar(
-          'Error',
-          response.error ?? 'Failed to load messages',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.red,
-          colorText: Colors.white,
-        );
+        _showError(response.error ?? 'Failed to load messages');
       }
     } catch (e) {
-      Get.snackbar(
-        'Error',
-        'Failed to load messages: $e',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      _showError('Failed to load messages: $e');
     } finally {
       isLoading.value = false;
     }
   }
 
-  // Send a new message
+  /// Send a new message
   void sendMessage() async {
     final messageText = messageController.text.trim();
     if (messageText.isEmpty || currentChatId.value.isEmpty) return;
 
-    // Clear input immediately
     messageController.clear();
-    onStopTyping();
 
     try {
       final response = await _chatService.sendMessage(
         chatId: currentChatId.value,
         content: messageText,
-        type: MessageType.text,
+        type: 'Text',
       );
 
-      if (response.success && response.data != null) {
-        // Add message to list
-        messages.add(response.data!);
-
-        // Scroll to bottom
-        scrollToBottom();
+      if (response.success) {
+        // Refresh messages immediately
+        await loadMessages();
       } else {
-        Get.snackbar(
-          'Error',
-          response.error ?? 'Failed to send message',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.red,
-          colorText: Colors.white,
-        );
+        _showError(response.error ?? 'Failed to send message');
       }
     } catch (e) {
-      Get.snackbar(
-        'Error',
-        'Failed to send message: $e',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      _showError('Failed to send message: $e');
     }
   }
 
-  // Scroll to bottom of messages
+  /// Scroll to bottom
   void scrollToBottom() {
     if (scrollController.hasClients) {
-      scrollController.animateTo(
-        scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (scrollController.hasClients) {
+          scrollController.animateTo(
+            scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      });
     }
   }
 
-  // Handle typing indicator
-  void onTyping() {
-    isTyping.value = true;
-  }
-
-  void onStopTyping() {
-    isTyping.value = false;
-  }
-
-  // Check if message is from current user
+  /// Check if message is from current user
   bool isMyMessage(Message message) {
-    return message.senderId == _authService.currentUser?.id;
+    return message.createdBy == _authService.currentUser?.id;
+  }
+
+  /// Refresh messages manually
+  Future<void> refreshMessages() async {
+    await loadMessages();
+  }
+
+  /// Show error message
+  void _showError(String message) {
+    Get.snackbar(
+      'Error',
+      message,
+      snackPosition: SnackPosition.BOTTOM,
+      backgroundColor: Colors.red,
+      colorText: Colors.white,
+      duration: const Duration(seconds: 3),
+    );
   }
 }
 
-// controllers/chat_head_controller.dart
 class ChatHeadController extends GetxController {
-  final ChatService _chatService = ChatService.instance;
+  final ChatService chatService = ChatService.instance;
   final AuthService _authService = AuthService.instance;
 
   // Observable variables
   final RxList<Chat> chatHeads = <Chat>[].obs;
   final RxBool isLoading = false.obs;
   final RxString searchQuery = ''.obs;
+  final RxInt totalUnreadCount = 0.obs;
+
+  // Timer for auto-refresh
+  Timer? _refreshTimer;
 
   // Filtered chat heads based on search
   List<Chat> get filteredChatHeads {
     if (searchQuery.value.isEmpty) {
-      return chatHeads;
+      return chatService.sortChatsByDate(chatHeads);
     }
 
-    return chatHeads.where((chat) {
-      final lastMessage = chat.lastMessage?.content.toLowerCase() ?? '';
-      return lastMessage.contains(searchQuery.value.toLowerCase());
-    }).toList();
+    final filtered = chatService.searchChats(searchQuery.value);
+    return chatService.sortChatsByDate(filtered);
   }
 
   @override
   void onInit() {
     super.onInit();
     loadChatHeads();
-
-    // Listen to chat updates
-    _setupChatListener();
+    _setupListeners();
+    //  _startAutoRefresh();
   }
 
-  // Setup listener for real-time chat updates
-  void _setupChatListener() {
-    _chatService.userChatsStream.listen((chats) {
+  @override
+  void onClose() {
+    _refreshTimer?.cancel();
+    super.onClose();
+  }
+
+  /// Setup listeners
+  void _setupListeners() {
+    chatService.userChatsStream.listen((chats) {
       chatHeads.assignAll(chats);
+    });
+
+    chatService.unreadCountStream.listen((count) {
+      totalUnreadCount.value = count;
     });
   }
 
-  // Load chat heads from API
+  /// Start auto-refresh for real-time updates
+  void _startAutoRefresh() {
+    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+      _refreshSilently();
+    });
+  }
+
+  /// Refresh silently without showing loader
+  Future<void> _refreshSilently() async {
+    try {
+      await chatService.getUserChats();
+    } catch (e) {
+      // Silently fail
+    }
+  }
+
+  /// Load chat heads from API
   void loadChatHeads() async {
     isLoading.value = true;
     try {
-      final response = await _chatService.getUserChats();
+      final response = await chatService.getUserChats();
 
       if (response.success && response.data != null) {
         chatHeads.assignAll(response.data!);
       } else {
-        Get.snackbar(
-          'Error',
-          response.error ?? 'Failed to load chats',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.red,
-          colorText: Colors.white,
-        );
+        _showError(response.error ?? 'Failed to load chats');
       }
     } catch (e) {
-      Get.snackbar(
-        'Error',
-        'Failed to load chats: $e',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      _showError('Failed to load chats: $e');
     } finally {
       isLoading.value = false;
     }
   }
 
-  // Navigate to chat screen
+  /// Navigate to chat screen
   void openChat(Chat chat) async {
     if (chat.id == null) return;
 
-    // Mark messages as read
-    await _chatService.markMessagesAsRead(chat.id!);
+    chatService.setSelectedChat(chat);
 
-    // Set selected chat in service
-    _chatService.setSelectedChat(chat);
+    final otherParticipant = chatService.getOtherParticipant(chat);
 
-    // Get other participant ID
-    final otherParticipantId = _chatService.getOtherParticipantId(chat);
-
-    // Navigate to chat screen with arguments
     Get.toNamed(
       Routes.CHAT_SCREEN,
       arguments: {
         'chatId': chat.id,
-        'userName': 'User', // You'll need to fetch user details
-        'userImage': '', // You'll need to fetch user details
-        'isOnline': false, // You'll need to implement online status
+        'userName': otherParticipant?.name ?? 'User',
+        'userImage': otherParticipant?.profilePicture ?? '',
+        'isOnline': false, // TODO: Implement online status
       },
     );
   }
 
-  // Search functionality
+  /// Create new chat with user
+  Future<void> createChatWithUser(String userId) async {
+    try {
+      isLoading.value = true;
+
+      final response = await chatService.getOrCreateChat(userId);
+
+      if (response.success && response.data != null) {
+        openChat(response.data!);
+      } else {
+        _showError(response.error ?? 'Failed to create chat');
+      }
+    } catch (e) {
+      _showError('Failed to create chat: $e');
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  /// Search functionality
   void onSearchChanged(String query) {
     searchQuery.value = query;
   }
 
-  // Refresh chat heads
+  /// Clear search
+  void clearSearch() {
+    searchQuery.value = '';
+  }
+
+  /// Refresh chat heads
   Future<void> refreshChatHeads() async {
-    await _chatService.refreshChats();
+    await chatService.refreshChats();
   }
 
-  // Get unread count for a chat
+  /// Get unread count for a chat
   int getUnreadCount(Chat chat) {
-    if (chat.id == null) return 0;
-    return _chatService.getUnreadCountForChat(chat.id!);
+    return chat.unreadCount;
   }
 
-  // Check if chat has unread messages
+  /// Check if chat has unread messages
   bool hasUnreadMessages(Chat chat) {
-    return getUnreadCount(chat) > 0;
+    return chat.unreadCount > 0;
+  }
+
+  /// Format message time
+  String formatMessageTime(DateTime? dateTime) {
+    if (dateTime == null) return '';
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final messageDate = DateTime(dateTime.year, dateTime.month, dateTime.day);
+
+    if (messageDate == today) {
+      return _formatTime(dateTime);
+    } else if (messageDate == today.subtract(const Duration(days: 1))) {
+      return 'Yesterday';
+    } else if (now.difference(messageDate).inDays < 7) {
+      return _getDayName(dateTime.weekday);
+    } else {
+      return '${dateTime.day}/${dateTime.month}/${dateTime.year}';
+    }
+  }
+
+  String _formatTime(DateTime dateTime) {
+    final hour =
+        dateTime.hour == 0
+            ? 12
+            : (dateTime.hour > 12 ? dateTime.hour - 12 : dateTime.hour);
+    final minute = dateTime.minute.toString().padLeft(2, '0');
+    final period = dateTime.hour < 12 ? 'AM' : 'PM';
+    return '$hour:$minute $period';
+  }
+
+  String _getDayName(int weekday) {
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return days[weekday - 1];
+  }
+
+  /// Show error message
+  void _showError(String message) {
+    Get.snackbar(
+      'Error',
+      message,
+      snackPosition: SnackPosition.BOTTOM,
+      backgroundColor: Colors.red,
+      colorText: Colors.white,
+      duration: const Duration(seconds: 3),
+    );
   }
 }
