@@ -3,8 +3,15 @@ import 'package:photo_bug/app/models/favourites_model/favourite_model.dart';
 import 'package:photo_bug/app/modules/image_detail/view/image_detail_view.dart';
 import 'package:photo_bug/app/routes/app_pages.dart';
 import 'package:photo_bug/main.dart';
+import 'package:photo_bug/app/services/auth/auth_service.dart';
+import 'package:photo_bug/app/services/photo_service/photo_service.dart';
+import 'package:photo_bug/app/data/models/photo_model.dart';
 
 class FavouriteController extends GetxController {
+  // Services
+  final AuthService _authService = AuthService.instance;
+  final PhotoService _photoService = PhotoService.instance;
+
   // Observable variables
   final RxList<FavoriteItem> favoriteItems = <FavoriteItem>[].obs;
   final RxList<FavoriteItem> filteredItems = <FavoriteItem>[].obs;
@@ -20,82 +27,93 @@ class FavouriteController extends GetxController {
     loadFavoriteItems();
   }
 
-  // Load favorite items
-  void loadFavoriteItems() async {
+  /// Load favorite items from API
+  Future<void> loadFavoriteItems() async {
     isLoading.value = true;
     try {
-      // Simulate API call - replace with actual API call
-      await Future.delayed(const Duration(milliseconds: 500));
+      // Check if user is logged in
+      if (!_authService.isAuthenticated) {
+        print('User not authenticated - cannot load favorites');
+        favoriteItems.clear();
+        filteredItems.clear();
+        isLoading.value = false;
+        return;
+      }
 
-      // Sample data - replace with actual API data
-      final sampleData = List.generate(12, (index) {
-        // Array of different image URLs
-        final imageUrls = [
-          dummyImg2,
-          'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?ixlib=rb-4.0.3&auto=format&fit=crop&w=764&q=80',
-          'https://images.unsplash.com/photo-1433086966358-54859d0ed716?ixlib=rb-4.0.3&auto=format&fit=crop&w=764&q=80',
-          'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?ixlib=rb-4.0.3&auto=format&fit=crop&w=764&q=80',
-          'https://images.unsplash.com/photo-1506197603052-3cc9c3a201bd?ixlib=rb-4.0.3&auto=format&fit=crop&w=764&q=80',
-          'https://images.unsplash.com/photo-1501594907352-04cda38ebc29?ixlib=rb-4.0.3&auto=format&fit=crop&w=764&q=80',
-          'https://images.unsplash.com/photo-1472214103451-9374bd1c798e?ixlib=rb-4.0.3&auto=format&fit=crop&w=764&q=80',
-          'https://images.unsplash.com/photo-1469474968028-56623f02e42e?ixlib=rb-4.0.3&auto=format&fit=crop&w=764&q=80',
-          'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?ixlib=rb-4.0.3&auto=format&fit=crop&w=764&q=80',
-          'https://images.unsplash.com/photo-1518837695005-2083093ee35b?ixlib=rb-4.0.3&auto=format&fit=crop&w=764&q=80',
-          'https://images.unsplash.com/photo-1511593358241-7eea1f3c84e5?ixlib=rb-4.0.3&auto=format&fit=crop&w=764&q=80',
-          'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?ixlib=rb-4.0.3&auto=format&fit=crop&w=764&q=80',
-        ];
+      final currentUser = _authService.currentUser;
+      if (currentUser == null ||
+          currentUser.favorites == null ||
+          currentUser.favorites!.isEmpty) {
+        print('No favorites found for user');
+        favoriteItems.clear();
+        filteredItems.clear();
+        isLoading.value = false;
+        return;
+      }
 
-        final authorNames = [
-          'Adrian',
-          'Sarah',
-          'Michael',
-          'Emma',
-          'James',
-          'Sofia',
-          'David',
-          'Luna',
-          'Alex',
-          'Maya',
-          'Chris',
-          'Zara',
-        ];
+      print('Loading favorites for ${currentUser.favorites!.length} creators');
 
-        final sizes = [
-          '40mb',
-          '35mb',
-          '50mb',
-          '28mb',
-          '42mb',
-          '38mb',
-          '45mb',
-          '32mb',
-          '48mb',
-          '36mb',
-          '44mb',
-          '39mb',
-        ];
+      // Get all trending photos (or you can fetch specific photos by creator IDs)
+      await _photoService.loadTrendingPhotosWithIsolate();
+      final allPhotos = _photoService.trendingPhotos;
 
-        return FavoriteItem(
-          id: 'fav_$index',
-          imageUrl: imageUrls[index], // Different URL for each image
-          authorName: authorNames[index], // Different author name
-          authorImage: dummyImg, // You can also make this different if needed
-          size: sizes[index], // Different file size
-          price: 100.0 + (index * 10),
-          isFavorite: true,
-        );
-      });
+      // Filter photos from favorite creators
+      final favoritePhotosList =
+          allPhotos.where((photo) {
+            final creatorId = photo.creator?.id;
+            return creatorId != null &&
+                currentUser.favorites!.contains(creatorId);
+          }).toList();
 
-      favoriteItems.assignAll(sampleData);
-      filteredItems.assignAll(sampleData);
+      print('Found ${favoritePhotosList.length} photos from favorite creators');
+
+      // Convert photos to FavoriteItem
+      final items =
+          favoritePhotosList.map((photo) {
+            return FavoriteItem(
+              id: photo.id ?? '',
+              imageUrl:
+                  photo.watermarkedLink ?? photo.link ?? photo.url ?? dummyImg2,
+              authorName: photo.creator?.name ?? 'Unknown',
+              authorImage: photo.creator?.profilePicture ?? dummyImg,
+              size: _formatFileSize(150),
+              price: photo.price ?? 0.0,
+              isFavorite: true,
+            );
+          }).toList();
+
+      favoriteItems.assignAll(items);
+      filteredItems.assignAll(items);
+
+      print('Loaded ${items.length} favorite items');
     } catch (e) {
+      print('Error loading favorite items: $e');
       Get.snackbar('Error', 'Failed to load favorite items');
     } finally {
       isLoading.value = false;
     }
   }
 
-  // Sort items based on selected option
+  /// Format file size from bytes to readable format
+  String _formatFileSize(int bytes) {
+    if (bytes <= 0) return '0 MB';
+
+    const int kb = 1024;
+    const int mb = kb * 1024;
+    const int gb = mb * 1024;
+
+    if (bytes >= gb) {
+      return '${(bytes / gb).toStringAsFixed(1)} GB';
+    } else if (bytes >= mb) {
+      return '${(bytes / mb).toStringAsFixed(1)} MB';
+    } else if (bytes >= kb) {
+      return '${(bytes / kb).toStringAsFixed(1)} KB';
+    } else {
+      return '$bytes B';
+    }
+  }
+
+  /// Sort items based on selected option
   void sortItems(SortType sortType) {
     selectedSort.value = sortType;
 
@@ -125,36 +143,99 @@ class FavouriteController extends GetxController {
     filteredItems.assignAll(sortedItems);
   }
 
-  // Extract numeric value from size string (e.g., "40mb" -> 40)
+  /// Extract numeric value from size string (e.g., "40.5 MB" -> 40.5)
   double _extractSizeValue(String size) {
     final regex = RegExp(r'(\d+(?:\.\d+)?)');
     final match = regex.firstMatch(size.toLowerCase());
     if (match != null) {
-      return double.tryParse(match.group(1) ?? '0') ?? 0;
+      final value = double.tryParse(match.group(1) ?? '0') ?? 0;
+
+      // Convert to MB for consistent comparison
+      if (size.toLowerCase().contains('gb')) {
+        return value * 1024;
+      } else if (size.toLowerCase().contains('kb')) {
+        return value / 1024;
+      } else if (size.toLowerCase().contains('b') &&
+          !size.toLowerCase().contains('mb')) {
+        return value / (1024 * 1024);
+      }
+
+      return value; // Already in MB
     }
     return 0;
   }
 
-  // Toggle favorite status
-  void toggleFavorite(String itemId) {
-    final index = favoriteItems.indexWhere((item) => item.id == itemId);
-    if (index != -1) {
-      final item = favoriteItems[index];
-      final updatedItem = item.copyWith(isFavorite: !item.isFavorite);
+  /// Toggle favorite status - Remove from favorites
+  Future<void> toggleFavorite(String itemId) async {
+    try {
+      // Find the item
+      final item = favoriteItems.firstWhereOrNull((i) => i.id == itemId);
 
-      if (updatedItem.isFavorite) {
-        favoriteItems[index] = updatedItem;
-      } else {
-        // Remove from favorites
-        favoriteItems.removeAt(index);
+      if (item == null) {
+        print('Item not found: $itemId');
+        return;
       }
 
-      // Update filtered items
+      // Get the photo to find creator ID
+      final photo = _photoService.trendingPhotos.firstWhereOrNull(
+        (p) => p.id == itemId,
+      );
+
+      if (photo == null || photo.creator?.id == null) {
+        print('Photo or creator not found for item: $itemId');
+        Get.snackbar('Error', 'Unable to remove favorite');
+        return;
+      }
+
+      final creatorId = photo.creator!.id!;
+
+      // Optimistically remove from UI
+      favoriteItems.removeWhere((i) => i.id == itemId);
       _updateFilteredItems();
+
+      // Call API to remove favorite
+      final response = await _authService.removeFavorite(creatorId);
+
+      if (response.success) {
+        // Refresh user data to update favorites list
+        await _authService.refreshUserData();
+
+        Get.snackbar(
+          'Success',
+          'Removed from favorites',
+          snackPosition: SnackPosition.BOTTOM,
+          duration: const Duration(seconds: 2),
+        );
+
+        print('Favorite removed successfully - Creator: $creatorId');
+      } else {
+        // Revert on failure - reload favorites
+        await loadFavoriteItems();
+
+        Get.snackbar(
+          'Error',
+          response.error ?? 'Failed to remove favorite',
+          snackPosition: SnackPosition.BOTTOM,
+          duration: const Duration(seconds: 2),
+        );
+
+        print('Failed to remove favorite: ${response.error}');
+      }
+    } catch (e) {
+      // Revert on error - reload favorites
+      await loadFavoriteItems();
+
+      print('Error toggling favorite: $e');
+      Get.snackbar(
+        'Error',
+        'An error occurred. Please try again.',
+        snackPosition: SnackPosition.BOTTOM,
+        duration: const Duration(seconds: 2),
+      );
     }
   }
 
-  // Update filtered items based on current sort
+  /// Update filtered items based on current sort
   void _updateFilteredItems() {
     if (selectedSort.value != null) {
       sortItems(selectedSort.value!);
@@ -163,21 +244,38 @@ class FavouriteController extends GetxController {
     }
   }
 
-  // Navigate to image details
+  /// Navigate to image details
   void openImageDetails(FavoriteItem item) {
+    // Find the actual photo object
+    final photo = _photoService.trendingPhotos.firstWhereOrNull(
+      (p) => p.id == item.id,
+    );
+
     Get.toNamed(
       Routes.IMAGE_DETAILS,
       arguments: {
-        'itemId': item.id,
+        'photo': photo,
         'imageUrl': item.imageUrl,
+        'imageTitle': photo?.metadata?.fileName ?? 'Image',
+        'price': item.price,
+        'photoId': item.id,
+        'creator': item.authorName,
+        'views': photo?.views ?? photo?.metadata?.views ?? 0,
+        // Legacy fields for backward compatibility
+        'itemId': item.id,
         'authorName': item.authorName,
         'authorImage': item.authorImage,
         'size': item.size,
-        'price': item.price,
       },
     );
   }
 
-  // Refresh favorite items
-  Future<void> refreshFavoriteItems() async {}
+  /// Refresh favorite items
+  Future<void> refreshFavoriteItems() async {
+    // First refresh user data to get latest favorites list
+    await _authService.refreshUserData();
+
+    // Then reload favorites
+    await loadFavoriteItems();
+  }
 }

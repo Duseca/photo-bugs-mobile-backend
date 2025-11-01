@@ -1,7 +1,10 @@
+// ignore_for_file: avoid_print
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:photo_bug/app/core/constants/app_colors.dart';
 import 'package:photo_bug/app/modules/bottom_nav_bar/controller/bottom_nav_controller.dart';
+import 'package:photo_bug/app/modules/favorite/controller/favourite_controller.dart';
 
 // Import your screen widgets
 import 'package:photo_bug/app/modules/home/view/home_view.dart';
@@ -18,7 +21,7 @@ class BottomNavBar extends GetView<BottomNavController> {
     Home(), // Home screen
     ChatHeadScreen(), // Chat screen
     Downloads(), // Downloads screen
-    Favourite(), // Favorites screen
+    _FavoriteScreenWrapper(), // Favorites screen with reload wrapper
     Profile(), // Profile screen
   ];
 
@@ -93,7 +96,6 @@ class BottomNavBar extends GetView<BottomNavController> {
                       controller.getTabIcon(index),
                       width: 24,
                       height: 24,
-
                       color: isSelected ? kSecondaryColor : kQuaternaryColor,
                     ),
                   ),
@@ -131,7 +133,6 @@ class BottomNavBar extends GetView<BottomNavController> {
                 controller.getTabLabel(index),
                 style: TextStyle(
                   fontSize: 10,
-
                   color: isSelected ? kSecondaryColor : kQuaternaryColor,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                 ),
@@ -163,5 +164,58 @@ class BottomNavBar extends GetView<BottomNavController> {
         controller.onProfileTabPressed();
         break;
     }
+  }
+}
+
+/// Wrapper widget for Favourite screen that reloads on visibility
+class _FavoriteScreenWrapper extends StatefulWidget {
+  const _FavoriteScreenWrapper({Key? key}) : super(key: key);
+
+  @override
+  State<_FavoriteScreenWrapper> createState() => _FavoriteScreenWrapperState();
+}
+
+class _FavoriteScreenWrapperState extends State<_FavoriteScreenWrapper>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    _setupVisibilityListener();
+  }
+
+  /// Setup listener for when this tab becomes visible
+  void _setupVisibilityListener() {
+    // Listen to bottom nav controller changes
+    final bottomNavController = Get.find<BottomNavController>();
+
+    ever(bottomNavController.currentIndex, (index) {
+      // If favorites tab (index 3) is selected
+      if (index == 3) {
+        print('❤️ Favorites tab now visible - reloading data...');
+        _reloadFavorites();
+      }
+    });
+  }
+
+  /// Reload favorites data
+  Future<void> _reloadFavorites() async {
+    try {
+      if (Get.isRegistered<FavouriteController>()) {
+        final favouriteController = Get.find<FavouriteController>();
+        await favouriteController.refreshFavoriteItems();
+        print('✅ Favorites reloaded successfully');
+      }
+    } catch (e) {
+      print('❌ Error reloading favorites: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return const Favourite();
   }
 }

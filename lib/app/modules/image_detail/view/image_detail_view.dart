@@ -19,11 +19,34 @@ class ImageDetails extends GetView<ImageDetailsController> {
       appBar: _buildAppBar(),
       body: Obx(() {
         if (controller.isLoading.value) {
-          return const Center(child: CircularProgressIndicator());
+          return const Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Loading image details...'),
+              ],
+            ),
+          );
         }
 
         if (controller.imageDetail.value == null) {
-          return const Center(child: Text('Failed to load image details'));
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.error_outline, size: 64, color: Colors.grey),
+                const SizedBox(height: 16),
+                const Text('Failed to load image details'),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: controller.refreshImageDetails,
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+          );
         }
 
         return _buildBody();
@@ -67,12 +90,12 @@ class ImageDetails extends GetView<ImageDetailsController> {
                       PopupMenuItem(
                         height: 36,
                         onTap: controller.shareProfile,
-                        child: MyText(text: 'Share Profile', size: 12),
+                        child: MyText(text: 'Share Photo', size: 12),
                       ),
                       PopupMenuItem(
                         height: 36,
                         onTap: controller.reportUser,
-                        child: MyText(text: 'Report User', size: 12),
+                        child: MyText(text: 'Report Photo', size: 12),
                       ),
                     ];
                   },
@@ -93,23 +116,34 @@ class ImageDetails extends GetView<ImageDetailsController> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Expanded(
-          child: ListView(
-            padding: EdgeInsets.zero,
-            children: [
-              CommonImageView(url: imageDetail.imageUrl, height: 270),
-              Padding(
-                padding: AppSizes.DEFAULT,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _buildAuthorSection(imageDetail),
-                    _buildTitle(imageDetail),
-                    _buildPhotoInfo(imageDetail),
-                    _buildKeywords(),
-                  ],
+          child: RefreshIndicator(
+            onRefresh: controller.refreshImageDetails,
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                // Main Image
+                CommonImageView(
+                  url: imageDetail.imageUrl,
+                  height: 270,
+                  width: Get.width,
                 ),
-              ),
-            ],
+
+                Padding(
+                  padding: AppSizes.DEFAULT,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const SizedBox(height: 16),
+                      _buildAuthorSection(imageDetail),
+                      _buildTitle(imageDetail),
+                      _buildPhotoInfo(imageDetail),
+                      _buildKeywords(),
+                      const SizedBox(height: 80), // Space for bottom button
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
         _buildPurchaseButton(imageDetail),
@@ -133,18 +167,32 @@ class ImageDetails extends GetView<ImageDetailsController> {
           child: MyText(
             text: imageDetail.authorName,
             size: 12,
+            weight: FontWeight.w500,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             paddingLeft: 8,
             onTap: controller.openAuthorProfile,
           ),
         ),
-        MyText(
-          text: imageDetail.viewCount.toString(),
-          size: 12,
-          paddingRight: 4,
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: kSecondaryColor.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Image.asset(Assets.imagesEyeOutline, height: 16),
+              const SizedBox(width: 4),
+              MyText(
+                text: imageDetail.viewCount.toString(),
+                size: 12,
+                weight: FontWeight.w500,
+              ),
+            ],
+          ),
         ),
-        Image.asset(Assets.imagesEyeOutline, height: 20),
       ],
     );
   }
@@ -152,10 +200,12 @@ class ImageDetails extends GetView<ImageDetailsController> {
   Widget _buildTitle(ImageDetail imageDetail) {
     return MyText(
       text: imageDetail.title,
-      size: 12,
-      weight: FontWeight.w500,
-      paddingTop: 8,
+      size: 14,
+      weight: FontWeight.w600,
+      paddingTop: 16,
       paddingBottom: 24,
+      maxLines: 3,
+      overflow: TextOverflow.ellipsis,
     );
   }
 
@@ -167,7 +217,6 @@ class ImageDetails extends GetView<ImageDetailsController> {
           text: 'Photo Info',
           size: 16,
           weight: FontWeight.w600,
-          paddingRight: 4,
           paddingBottom: 16,
         ),
         ...imageDetail.metadata.detailsList.map(
@@ -182,6 +231,10 @@ class ImageDetails extends GetView<ImageDetailsController> {
       final visibleKeywords = controller.visibleKeywords;
       final additionalCount = controller.additionalKeywordsCount;
 
+      if (visibleKeywords.isEmpty) {
+        return const SizedBox.shrink();
+      }
+
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -189,7 +242,7 @@ class ImageDetails extends GetView<ImageDetailsController> {
             text: 'Keywords',
             size: 16,
             weight: FontWeight.w600,
-            paddingTop: 16,
+            paddingTop: 24,
             paddingBottom: 16,
           ),
           Wrap(
@@ -199,10 +252,21 @@ class ImageDetails extends GetView<ImageDetailsController> {
             children: [
               ...visibleKeywords.map((keyword) => _buildKeywordChip(keyword)),
               if (additionalCount > 0)
-                MyText(
-                  text: '+$additionalCount',
-                  size: 13,
-                  color: kTertiaryColor,
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: kSecondaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(50),
+                  ),
+                  child: MyText(
+                    text: '+$additionalCount',
+                    size: 13,
+                    weight: FontWeight.w500,
+                    color: kSecondaryColor,
+                  ),
                 ),
             ],
           ),
@@ -233,17 +297,37 @@ class ImageDetails extends GetView<ImageDetailsController> {
   }
 
   Widget _buildPurchaseButton(ImageDetail imageDetail) {
-    return Padding(
-      padding: AppSizes.DEFAULT,
-      child: MyButton(
-        buttonText: 'Purchase for \$${imageDetail.price.toStringAsFixed(0)}',
-        onTap: controller.purchaseImage,
+    // Check if photo is free
+    final isFree = imageDetail.price == 0;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -5),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: AppSizes.DEFAULT,
+        child: SafeArea(
+          child: MyButton(
+            buttonText:
+                isFree
+                    ? 'Download for Free'
+                    : 'Purchase for \$${imageDetail.price.toStringAsFixed(0)}',
+            onTap: controller.purchaseImage,
+          ),
+        ),
       ),
     );
   }
 }
 
-// widgets/details_tile.dart
+/// Details Tile Widget
 class DetailsTile extends StatelessWidget {
   final String title, subText;
 
@@ -252,18 +336,26 @@ class DetailsTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         children: [
           Expanded(
             child: MyText(
               text: title,
               size: 12,
+              color: kTertiaryColor,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          MyText(text: subText, size: 12),
+          const SizedBox(width: 16),
+          MyText(
+            text: subText,
+            size: 12,
+            weight: FontWeight.w500,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         ],
       ),
     );

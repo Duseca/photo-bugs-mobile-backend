@@ -1,6 +1,7 @@
-// ==================== MODELS ====================
+// Updated FavoriteItem model to store original Photo data
 
-// models/favorite_item.dart
+import 'package:photo_bug/app/data/models/photo_model.dart';
+
 class FavoriteItem {
   final String id;
   final String imageUrl;
@@ -9,6 +10,7 @@ class FavoriteItem {
   final String size;
   final double price;
   final bool isFavorite;
+  final Photo? photoData; // ✅ Add this field to store original photo
 
   FavoriteItem({
     required this.id,
@@ -18,31 +20,8 @@ class FavoriteItem {
     required this.size,
     required this.price,
     this.isFavorite = true,
+    this.photoData, // ✅ Add this parameter
   });
-
-  factory FavoriteItem.fromJson(Map<String, dynamic> json) {
-    return FavoriteItem(
-      id: json['id'],
-      imageUrl: json['imageUrl'],
-      authorName: json['authorName'],
-      authorImage: json['authorImage'],
-      size: json['size'],
-      price: json['price'].toDouble(),
-      isFavorite: json['isFavorite'] ?? true,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'imageUrl': imageUrl,
-      'authorName': authorName,
-      'authorImage': authorImage,
-      'size': size,
-      'price': price,
-      'isFavorite': isFavorite,
-    };
-  }
 
   FavoriteItem copyWith({
     String? id,
@@ -52,6 +31,7 @@ class FavoriteItem {
     String? size,
     double? price,
     bool? isFavorite,
+    Photo? photoData,
   }) {
     return FavoriteItem(
       id: id ?? this.id,
@@ -61,31 +41,23 @@ class FavoriteItem {
       size: size ?? this.size,
       price: price ?? this.price,
       isFavorite: isFavorite ?? this.isFavorite,
+      photoData: photoData ?? this.photoData, // ✅ Add this
     );
   }
 }
 
-// models/sort_option.dart
-enum SortType {
-  priceHighToLow,
-  priceLowToHigh,
-  sizeHighToLow,
-  sizeLowToHigh,
-}
+enum SortType { priceHighToLow, priceLowToHigh, sizeHighToLow, sizeLowToHigh }
 
 class SortOption {
-  final SortType type;
   final String label;
+  final SortType type;
 
-  SortOption({
-    required this.type,
-    required this.label,
-  });
+  SortOption({required this.label, required this.type});
 
   static List<SortOption> get defaultOptions => [
-        SortOption(type: SortType.priceHighToLow, label: 'Price High To Low'),
-        SortOption(type: SortType.priceLowToHigh, label: 'Price Low to High'),
-        SortOption(type: SortType.sizeHighToLow, label: 'Size High to Low'),
-        SortOption(type: SortType.sizeLowToHigh, label: 'Size Low to High'),
-      ];
+    SortOption(label: 'Price: High to Low', type: SortType.priceHighToLow),
+    SortOption(label: 'Price: Low to High', type: SortType.priceLowToHigh),
+    SortOption(label: 'Size: High to Low', type: SortType.sizeHighToLow),
+    SortOption(label: 'Size: Low to High', type: SortType.sizeLowToHigh),
+  ];
 }

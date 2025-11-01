@@ -1,13 +1,56 @@
 // ignore_for_file: avoid_print
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
+import 'package:http/http.dart' as http;
 import 'package:photo_bug/app/data/models/photo_model.dart';
 import 'package:photo_bug/app/data/models/api_response.dart';
 import 'package:photo_bug/app/data/configs/api_configs.dart';
+import 'package:photo_bug/app/models/download_model/download_model.dart';
 import '../app/app_service.dart';
 import '../auth/auth_service.dart';
+
+// ==================== ISOLATE FUNCTION ====================
+// This must be a top-level function for isolate to work
+Future<Map<String, dynamic>> _fetchTrendingPhotosIsolate(
+  Map<String, dynamic> params,
+) async {
+  try {
+    final url = params['url'] as String;
+    final token = params['token'] as String;
+
+    final response = await http.get(
+      Uri.parse(url),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final jsonResponse = json.decode(response.body);
+
+      return {
+        'success': true,
+        'data': jsonResponse['results'] ?? jsonResponse['data'] ?? [],
+        'message': jsonResponse['message'],
+        'total': jsonResponse['total'],
+      };
+    } else {
+      final errorData = json.decode(response.body);
+      return {
+        'success': false,
+        'error': errorData['message'] ?? errorData['error'] ?? 'Unknown error',
+        'statusCode': response.statusCode,
+      };
+    }
+  } catch (e) {
+    return {'success': false, 'error': 'Network error: $e'};
+  }
+}
 
 class PhotoService extends GetxService {
   static PhotoService get instance => Get.find<PhotoService>();
@@ -17,23 +60,28 @@ class PhotoService extends GetxService {
 
   // Reactive variables
   final RxList<Photo> _creatorPhotos = <Photo>[].obs;
+  final RxList<Photo> _trendingPhotos = <Photo>[].obs;
   final RxMap<String, List<Photo>> _photosByEvent = <String, List<Photo>>{}.obs;
   final RxMap<String, List<Photo>> _photosByFolder =
       <String, List<Photo>>{}.obs;
   final Rx<Photo?> _selectedPhoto = Rx<Photo?>(null);
   final RxBool _isLoading = false.obs;
   final RxBool _isUploading = false.obs;
+  final RxBool _isFetchingTrending = false.obs;
   final RxDouble _uploadProgress = 0.0.obs;
 
   // Getters
   List<Photo> get creatorPhotos => _creatorPhotos;
+  List<Photo> get trendingPhotos => _trendingPhotos;
   Photo? get selectedPhoto => _selectedPhoto.value;
   bool get isLoading => _isLoading.value;
   bool get isUploading => _isUploading.value;
+  bool get isFetchingTrending => _isFetchingTrending.value;
   double get uploadProgress => _uploadProgress.value;
 
   // Streams for reactive UI
   Stream<List<Photo>> get creatorPhotosStream => _creatorPhotos.stream;
+  Stream<List<Photo>> get trendingPhotosStream => _trendingPhotos.stream;
   Stream<Photo?> get selectedPhotoStream => _selectedPhoto.stream;
   Stream<bool> get uploadingStream => _isUploading.stream;
   Stream<double> get uploadProgressStream => _uploadProgress.stream;
@@ -72,6 +120,95 @@ class PhotoService extends GetxService {
     });
   }
 
+  // ==================== TRENDING PHOTOS ====================
+
+  /// Get trending photos using isolate for background processing
+  Future<ApiResponse<List<Photo>>> getTrendingPhotos() async {
+    try {
+      _isFetchingTrending.value = true;
+
+      final response = await makeApiRequest<List<Photo>>(
+        method: 'GET',
+        endpoint: ApiConfig.endpoints.getTrendingPhotos,
+        fromJson: (json) {
+          if (json is List) {
+            return json.map((e) => Photo.fromJson(e)).toList();
+          }
+          return <Photo>[];
+        },
+      );
+
+      if (response.success && response.data != null) {
+        _trendingPhotos.value = response.data!;
+        print('Trending photos loaded: ${response.data!.length} photos');
+      }
+
+      return response;
+    } catch (e) {
+      print('Error fetching trending photos: $e');
+      return ApiResponse<List<Photo>>(
+        success: false,
+        error: 'Failed to get trending photos: $e',
+      );
+    } finally {
+      _isFetchingTrending.value = false;
+    }
+  }
+
+  /// Load trending photos using isolate for better performance
+  Future<void> loadTrendingPhotosWithIsolate() async {
+    try {
+      _isFetchingTrending.value = true;
+
+      // Get auth token
+      final token = _authService.authToken;
+      if (token == null) {
+        print('No auth token available for trending photos');
+        // Try without auth for public trending photos
+        await getTrendingPhotos();
+        return;
+      }
+
+      // Prepare data for isolate
+      final params = {
+        'url':
+            '${ApiConfig.fullApiUrl}${ApiConfig.endpoints.getTrendingPhotos}',
+        'token': token,
+      };
+
+      // Run in isolate for background processing
+      final result = await compute(_fetchTrendingPhotosIsolate, params);
+
+      if (result['success'] == true && result['data'] != null) {
+        final photos =
+            (result['data'] as List)
+                .map((json) => Photo.fromJson(json))
+                .toList();
+
+        _trendingPhotos.value = photos;
+        print('Trending photos loaded via isolate: ${photos.length} photos');
+      } else {
+        print('Failed to load trending photos: ${result['error']}');
+      }
+    } catch (e) {
+      print('Error loading trending photos with isolate: $e');
+      // Fallback to normal loading
+      await getTrendingPhotos();
+    } finally {
+      _isFetchingTrending.value = false;
+    }
+  }
+
+  /// Refresh trending photos
+  Future<void> refreshTrendingPhotos() async {
+    await loadTrendingPhotosWithIsolate();
+  }
+
+  /// Clear trending photos cache
+  void clearTrendingCache() {
+    _trendingPhotos.clear();
+  }
+
   // ==================== PHOTO CRUD OPERATIONS ====================
 
   /// Get all creator photos
@@ -79,7 +216,7 @@ class PhotoService extends GetxService {
     try {
       _isLoading.value = true;
 
-      final response = await _makeApiRequest<List<Photo>>(
+      final response = await makeApiRequest<List<Photo>>(
         method: 'GET',
         endpoint: ApiConfig.endpoints.creatorPhotos,
         fromJson: (json) {
@@ -110,7 +247,7 @@ class PhotoService extends GetxService {
     try {
       _isLoading.value = true;
 
-      final response = await _makeApiRequest<Photo>(
+      final response = await makeApiRequest<Photo>(
         method: 'GET',
         endpoint: ApiConfig.endpoints.photoById(photoId),
         fromJson: (json) => Photo.fromJson(json),
@@ -137,9 +274,7 @@ class PhotoService extends GetxService {
       _isUploading.value = true;
       _uploadProgress.value = 0.0;
 
-      // Note: Actual file upload would use FormData with GetConnect
-      // This is a simplified version - you'll need to implement proper file upload
-      final response = await _makeApiRequest<Photo>(
+      final response = await makeApiRequest<Photo>(
         method: 'POST',
         endpoint: ApiConfig.endpoints.uploadPhoto,
         data: request.toJson(),
@@ -147,12 +282,8 @@ class PhotoService extends GetxService {
       );
 
       if (response.success && response.data != null) {
-        // Add to creator photos list
         _creatorPhotos.insert(0, response.data!);
-
-        // Update storage usage if needed
         await _authService.getStorageInfo();
-
         print('Photo uploaded successfully');
       }
 
@@ -182,7 +313,6 @@ class PhotoService extends GetxService {
         return ApiResponse<Photo>(success: false, error: 'File does not exist');
       }
 
-      // Check file size
       final fileSize = await file.length();
       if (fileSize > ApiConfig.maxFileSize) {
         return ApiResponse<Photo>(
@@ -192,38 +322,94 @@ class PhotoService extends GetxService {
       }
 
       final url = '${ApiConfig.fullApiUrl}${ApiConfig.endpoints.uploadPhoto}';
-      final headers = ApiConfig.authHeaders(_authService.authToken!);
+      final token = _authService.authToken;
+      print('Uploading photo to $token');
 
-      final formData = FormData({
-        'file': MultipartFile(file, filename: file.path.split('/').last),
-        if (price != null) 'price': price.toString(),
-        if (metadata != null) 'metadata': metadata.toJson(),
-      });
-
-      final getConnect = GetConnect(timeout: ApiConfig.sendTimeout);
-
-      final response = await getConnect.post(
-        url,
-        formData,
-        headers: headers,
-        uploadProgress: (percent) {
-          _uploadProgress.value = percent / 100;
-        },
-      );
-
-      final apiResponse = _handleResponse<Photo>(
-        response,
-        (json) => Photo.fromJson(json),
-      );
-
-      if (apiResponse.success && apiResponse.data != null) {
-        _creatorPhotos.insert(0, apiResponse.data!);
-        await _authService.getStorageInfo();
-        print('Photo uploaded successfully with file');
+      if (token == null) {
+        return ApiResponse<Photo>(
+          success: false,
+          error: 'Authentication required',
+        );
       }
 
-      return apiResponse;
+      // Create multipart request
+      final request = http.MultipartRequest('POST', Uri.parse(url));
+
+      // Add headers
+      request.headers.addAll({'Authorization': 'Bearer $token'});
+
+      // Add file
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'image', // Changed from 'file' to 'image' to match API
+          file.path,
+        ),
+      );
+
+      // Add price if provided
+      if (price != null) {
+        request.fields['price'] = price.toString();
+      }
+
+      // Add metadata as JSON string if provided
+      if (metadata != null) {
+        request.fields['metadata'] = jsonEncode(metadata.toJson());
+      }
+
+      // Send request and get response
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      // Handle response
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        try {
+          final jsonResponse = json.decode(response.body);
+
+          // Handle different response structures
+          dynamic photoData;
+          if (jsonResponse['data'] != null) {
+            photoData = jsonResponse['data'];
+          } else if (jsonResponse['photo'] != null) {
+            photoData = jsonResponse['photo'];
+          } else if (jsonResponse['result'] != null) {
+            photoData = jsonResponse['result'];
+          } else {
+            // If no nested data, use the response itself
+            photoData = jsonResponse;
+          }
+
+          final photo = Photo.fromJson(photoData);
+          _creatorPhotos.insert(0, photo);
+          await _authService.getStorageInfo();
+
+          print('Photo uploaded successfully: ${photo.id}');
+
+          return ApiResponse<Photo>(
+            success: true,
+            data: photo,
+            message: jsonResponse['message'] ?? 'Photo uploaded successfully',
+            statusCode: response.statusCode,
+          );
+        } catch (e) {
+          print('Error parsing upload response: $e');
+          print('Response body: ${response.body}');
+
+          return ApiResponse<Photo>(
+            success: false,
+            error: 'Failed to parse upload response',
+            statusCode: response.statusCode,
+          );
+        }
+      } else {
+        final errorData = json.decode(response.body);
+        return ApiResponse<Photo>(
+          success: false,
+          error: errorData['message'] ?? errorData['error'] ?? 'Upload failed',
+          statusCode: response.statusCode,
+        );
+      }
     } catch (e) {
+      print('Upload error: $e');
       return ApiResponse<Photo>(
         success: false,
         error: 'Failed to upload photo: $e',
@@ -242,7 +428,7 @@ class PhotoService extends GetxService {
     try {
       _isLoading.value = true;
 
-      final response = await _makeApiRequest<Photo>(
+      final response = await makeApiRequest<Photo>(
         method: 'PUT',
         endpoint: ApiConfig.endpoints.updatePhoto(photoId),
         data: request.toJson(),
@@ -250,7 +436,6 @@ class PhotoService extends GetxService {
       );
 
       if (response.success && response.data != null) {
-        // Update in lists
         _updatePhotoInLists(response.data!);
         print('Photo updated successfully');
       }
@@ -271,22 +456,19 @@ class PhotoService extends GetxService {
     try {
       _isLoading.value = true;
 
-      final response = await _makeApiRequest(
+      final response = await makeApiRequest(
         method: 'DELETE',
         endpoint: ApiConfig.endpoints.deletePhoto(photoId),
       );
 
       if (response.success) {
-        // Remove from lists
         _removePhotoFromLists(photoId);
 
         if (_selectedPhoto.value?.id == photoId) {
           _selectedPhoto.value = null;
         }
 
-        // Update storage usage
         await _authService.getStorageInfo();
-
         print('Photo deleted successfully');
       }
 
@@ -295,241 +477,6 @@ class PhotoService extends GetxService {
       return ApiResponse<dynamic>(
         success: false,
         error: 'Failed to delete photo: $e',
-      );
-    } finally {
-      _isLoading.value = false;
-    }
-  }
-
-  // ==================== PHOTO FILTERING & GROUPING ====================
-
-  /// Get photos by event
-  List<Photo> getPhotosByEvent(String eventId) {
-    if (_photosByEvent.containsKey(eventId)) {
-      return _photosByEvent[eventId]!;
-    }
-
-    final photos =
-        _creatorPhotos.where((photo) => photo.eventId == eventId).toList();
-
-    _photosByEvent[eventId] = photos;
-    return photos;
-  }
-
-  /// Get photos by folder
-  List<Photo> getPhotosByFolder(String folderId) {
-    if (_photosByFolder.containsKey(folderId)) {
-      return _photosByFolder[folderId]!;
-    }
-
-    final photos =
-        _creatorPhotos.where((photo) => photo.folderId == folderId).toList();
-
-    _photosByFolder[folderId] = photos;
-    return photos;
-  }
-
-  /// Get photos by status
-  List<Photo> getPhotosByStatus(PhotoStatus status) {
-    return _creatorPhotos.where((photo) => photo.status == status).toList();
-  }
-
-  /// Get active photos
-  List<Photo> getActivePhotos() {
-    return getPhotosByStatus(PhotoStatus.active);
-  }
-
-  /// Get archived photos
-  List<Photo> getArchivedPhotos() {
-    return getPhotosByStatus(PhotoStatus.archived);
-  }
-
-  /// Get photos by price range
-  List<Photo> getPhotosByPriceRange({double? minPrice, double? maxPrice}) {
-    return _creatorPhotos.where((photo) {
-      if (photo.price == null) return false;
-
-      if (minPrice != null && photo.price! < minPrice) return false;
-      if (maxPrice != null && photo.price! > maxPrice) return false;
-
-      return true;
-    }).toList();
-  }
-
-  /// Get free photos
-  List<Photo> getFreePhotos() {
-    return _creatorPhotos
-        .where((photo) => photo.price == null || photo.price == 0)
-        .toList();
-  }
-
-  /// Get paid photos
-  List<Photo> getPaidPhotos() {
-    return _creatorPhotos
-        .where((photo) => photo.price != null && photo.price! > 0)
-        .toList();
-  }
-
-  // ==================== SORTING ====================
-
-  /// Sort photos by date (most recent first)
-  List<Photo> sortPhotosByDate(List<Photo> photos, {bool descending = true}) {
-    final sorted = List<Photo>.from(photos);
-    sorted.sort((a, b) {
-      if (a.createdAt == null || b.createdAt == null) return 0;
-      return descending
-          ? b.createdAt!.compareTo(a.createdAt!)
-          : a.createdAt!.compareTo(b.createdAt!);
-    });
-    return sorted;
-  }
-
-  /// Sort photos by price
-  List<Photo> sortPhotosByPrice(List<Photo> photos, {bool descending = true}) {
-    final sorted = List<Photo>.from(photos);
-    sorted.sort((a, b) {
-      final priceA = a.price ?? 0;
-      final priceB = b.price ?? 0;
-      return descending ? priceB.compareTo(priceA) : priceA.compareTo(priceB);
-    });
-    return sorted;
-  }
-
-  /// Sort photos by file size
-  List<Photo> sortPhotosBySize(List<Photo> photos, {bool descending = true}) {
-    final sorted = List<Photo>.from(photos);
-    sorted.sort((a, b) {
-      final sizeA = a.metadata?.fileSize ?? 0;
-      final sizeB = b.metadata?.fileSize ?? 0;
-      return descending ? sizeB.compareTo(sizeA) : sizeA.compareTo(sizeB);
-    });
-    return sorted;
-  }
-
-  // ==================== STATISTICS ====================
-
-  /// Get total storage used by photos
-  int getTotalStorageUsed() {
-    return _creatorPhotos.fold<int>(
-      0,
-      (sum, photo) => sum + (photo.metadata?.fileSize ?? 0),
-    );
-  }
-
-  /// Get total revenue potential
-  double getTotalRevenuePotential() {
-    return _creatorPhotos.fold<double>(
-      0.0,
-      (sum, photo) => sum + (photo.price ?? 0),
-    );
-  }
-
-  /// Get photo count by status
-  Map<PhotoStatus, int> getPhotoCountByStatus() {
-    final counts = <PhotoStatus, int>{};
-
-    for (final status in PhotoStatus.values) {
-      counts[status] = getPhotosByStatus(status).length;
-    }
-
-    return counts;
-  }
-
-  /// Get average photo price
-  double getAveragePhotoPrice() {
-    final paidPhotos = getPaidPhotos();
-    if (paidPhotos.isEmpty) return 0.0;
-
-    final total = paidPhotos.fold<double>(
-      0.0,
-      (sum, photo) => sum + (photo.price ?? 0),
-    );
-
-    return total / paidPhotos.length;
-  }
-
-  // ==================== BATCH OPERATIONS ====================
-
-  /// Delete multiple photos
-  Future<ApiResponse<Map<String, dynamic>>> deleteMultiplePhotos(
-    List<String> photoIds,
-  ) async {
-    try {
-      _isLoading.value = true;
-
-      final results = <String, bool>{};
-      int successCount = 0;
-      int failCount = 0;
-
-      for (final photoId in photoIds) {
-        final response = await deletePhoto(photoId);
-        results[photoId] = response.success;
-
-        if (response.success) {
-          successCount++;
-        } else {
-          failCount++;
-        }
-      }
-
-      return ApiResponse<Map<String, dynamic>>(
-        success: failCount == 0,
-        data: {
-          'total': photoIds.length,
-          'success': successCount,
-          'failed': failCount,
-          'results': results,
-        },
-        message: 'Deleted $successCount of ${photoIds.length} photos',
-      );
-    } catch (e) {
-      return ApiResponse<Map<String, dynamic>>(
-        success: false,
-        error: 'Failed to delete multiple photos: $e',
-      );
-    } finally {
-      _isLoading.value = false;
-    }
-  }
-
-  /// Update price for multiple photos
-  Future<ApiResponse<Map<String, dynamic>>> updateMultiplePhotosPrices(
-    List<String> photoIds,
-    double newPrice,
-  ) async {
-    try {
-      _isLoading.value = true;
-
-      final results = <String, bool>{};
-      int successCount = 0;
-      int failCount = 0;
-
-      for (final photoId in photoIds) {
-        final request = UpdatePhotoRequest(price: newPrice);
-        final response = await updatePhoto(photoId, request);
-        results[photoId] = response.success;
-
-        if (response.success) {
-          successCount++;
-        } else {
-          failCount++;
-        }
-      }
-
-      return ApiResponse<Map<String, dynamic>>(
-        success: failCount == 0,
-        data: {
-          'total': photoIds.length,
-          'success': successCount,
-          'failed': failCount,
-          'results': results,
-        },
-        message: 'Updated $successCount of ${photoIds.length} photos',
-      );
-    } catch (e) {
-      return ApiResponse<Map<String, dynamic>>(
-        success: false,
-        error: 'Failed to update multiple photos: $e',
       );
     } finally {
       _isLoading.value = false;
@@ -550,23 +497,19 @@ class PhotoService extends GetxService {
 
   /// Update photo in all lists
   void _updatePhotoInLists(Photo updatedPhoto) {
-    // Update in creator photos
     final index = _creatorPhotos.indexWhere((p) => p.id == updatedPhoto.id);
     if (index != -1) {
       _creatorPhotos[index] = updatedPhoto;
     }
 
-    // Update in cached event photos
     if (updatedPhoto.eventId != null) {
       _photosByEvent.remove(updatedPhoto.eventId);
     }
 
-    // Update in cached folder photos
     if (updatedPhoto.folderId != null) {
       _photosByFolder.remove(updatedPhoto.folderId);
     }
 
-    // Update selected photo
     if (_selectedPhoto.value?.id == updatedPhoto.id) {
       _selectedPhoto.value = updatedPhoto;
     }
@@ -578,7 +521,6 @@ class PhotoService extends GetxService {
 
     _creatorPhotos.removeWhere((p) => p.id == photoId);
 
-    // Remove from cached lists
     if (photo?.eventId != null) {
       _photosByEvent.remove(photo!.eventId);
     }
@@ -591,53 +533,28 @@ class PhotoService extends GetxService {
   /// Clear all photos
   void _clearAllPhotos() {
     _creatorPhotos.clear();
+    _trendingPhotos.clear();
     _photosByEvent.clear();
     _photosByFolder.clear();
     _selectedPhoto.value = null;
   }
 
-  /// Set selected photo
-  void setSelectedPhoto(Photo? photo) {
-    _selectedPhoto.value = photo;
-  }
-
-  /// Clear cache for event
-  void clearEventCache(String eventId) {
-    _photosByEvent.remove(eventId);
-  }
-
-  /// Clear cache for folder
-  void clearFolderCache(String folderId) {
-    _photosByFolder.remove(folderId);
-  }
-
-  /// Clear all caches
-  void clearAllCaches() {
-    _photosByEvent.clear();
-    _photosByFolder.clear();
-  }
-
   // ==================== API REQUEST METHOD ====================
 
   /// Generic API request method
-  Future<ApiResponse<T>> _makeApiRequest<T>({
+  Future<ApiResponse<T>> makeApiRequest<T>({
     required String method,
     required String endpoint,
     Map<String, dynamic>? data,
     T Function(dynamic)? fromJson,
   }) async {
     try {
-      // Check authentication
-      if (_authService.authToken == null) {
-        return ApiResponse<T>(
-          success: false,
-          error: 'Authentication required',
-          statusCode: 401,
-        );
-      }
-
       final url = '${ApiConfig.fullApiUrl}$endpoint';
-      final headers = ApiConfig.authHeaders(_authService.authToken!);
+      Map<String, String> headers = {'Content-Type': 'application/json'};
+
+      if (_authService.authToken != null) {
+        headers = ApiConfig.authHeaders(_authService.authToken!);
+      }
 
       final getConnect = GetConnect(timeout: ApiConfig.connectTimeout);
 
@@ -666,7 +583,7 @@ class PhotoService extends GetxService {
     }
   }
 
-  /// Handle HTTP response
+  /// Handle HTTP response - UPDATED VERSION
   ApiResponse<T> _handleResponse<T>(
     Response response,
     T Function(dynamic)? fromJson,
@@ -677,15 +594,37 @@ class PhotoService extends GetxService {
       if (statusCode >= 200 && statusCode < 300) {
         final responseData = response.body;
 
+        // Determine what data to process
+        dynamic dataToProcess;
+
+        if (responseData is Map<String, dynamic>) {
+          if (responseData.containsKey('data')) {
+            dataToProcess = responseData['data'];
+          } else if (responseData.containsKey('results')) {
+            dataToProcess = responseData['results'];
+          } else {
+            // Use entire response for endpoints like download stats
+            dataToProcess = responseData;
+          }
+        } else {
+          dataToProcess = responseData;
+        }
+
         return ApiResponse<T>(
           success: true,
           statusCode: statusCode,
-          message: responseData['message'],
+          message: responseData is Map ? responseData['message'] : null,
           data:
-              fromJson != null && responseData['data'] != null
-                  ? fromJson(responseData['data'])
-                  : responseData['data'],
-          metadata: responseData['metadata'],
+              fromJson != null && dataToProcess != null
+                  ? fromJson(
+                    dataToProcess,
+                  ) // ✅ This calls your fromJson callback
+                  : dataToProcess,
+          metadata:
+              responseData is Map
+                  ? (responseData['metadata'] ??
+                      {'total': responseData['total']})
+                  : null,
         );
       }
 
@@ -697,10 +636,141 @@ class PhotoService extends GetxService {
         message: errorData['message'],
       );
     } catch (e) {
+      print('❌ Error parsing response: $e');
       return ApiResponse<T>(
         success: false,
         error: 'Failed to parse response: $e',
         statusCode: response.statusCode,
+      );
+    }
+  }
+
+  /// Get download statistics
+  // Replace your current getDownloadStats() method with this exact code
+
+  /// Get download statistics
+  Future<ApiResponse<DownloadStats>> getDownloadStats() async {
+    try {
+      print(
+        '🔄 Fetching download stats from: ${ApiConfig.endpoints.getDownloadStats}',
+      );
+
+      final response = await makeApiRequest<DownloadStats>(
+        method: 'GET',
+        endpoint: ApiConfig.endpoints.getDownloadStats,
+        fromJson: (json) {
+          print('📦 Parsing download stats JSON: $json');
+
+          // The API returns data directly at root level
+          if (json is Map<String, dynamic>) {
+            try {
+              final stats = DownloadStats.fromJson(json);
+              print('✅ Successfully parsed DownloadStats');
+              return stats;
+            } catch (e) {
+              print('❌ Error parsing DownloadStats: $e');
+              rethrow;
+            }
+          }
+
+          throw Exception(
+            'Invalid response format: expected Map, got ${json.runtimeType}',
+          );
+        },
+      );
+
+      if (response.success && response.data != null) {
+        print('✅ Download stats loaded successfully');
+        print('Total downloads: ${response.data!.totalDownloads}');
+        print('Monthly stats: ${response.data!.monthlyStats.length} months');
+      } else {
+        print('❌ Failed to load download stats: ${response.error}');
+      }
+
+      return response;
+    } catch (e, stackTrace) {
+      print('❌ Error in getDownloadStats: $e');
+      print('Stack trace: $stackTrace');
+      return ApiResponse<DownloadStats>(
+        success: false,
+        error: 'Failed to get download statistics: $e',
+      );
+    }
+  }
+
+  /// Get all photos (used for download statistics calculations)
+  /// This will return all photos including from other creators
+  Future<ApiResponse<List<Map<String, dynamic>>>> getAllPhotos() async {
+    try {
+      final response = await makeApiRequest<List<Map<String, dynamic>>>(
+        method: 'GET',
+        endpoint: ApiConfig.endpoints.getAllPhotos,
+        fromJson: (json) {
+          // Handle different response structures
+          if (json is List) {
+            return json.map((e) => e as Map<String, dynamic>).toList();
+          } else if (json is Map) {
+            if (json['data'] is List) {
+              return (json['data'] as List)
+                  .map((e) => e as Map<String, dynamic>)
+                  .toList();
+            } else if (json['results'] is List) {
+              return (json['results'] as List)
+                  .map((e) => e as Map<String, dynamic>)
+                  .toList();
+            }
+          }
+          return <Map<String, dynamic>>[];
+        },
+      );
+
+      if (response.success) {
+        print('✅ All photos loaded: ${response.data?.length ?? 0} photos');
+      } else {
+        print('❌ Failed to load all photos: ${response.error}');
+      }
+
+      return response;
+    } catch (e) {
+      print('❌ Error in getAllPhotos: $e');
+      return ApiResponse<List<Map<String, dynamic>>>(
+        success: false,
+        error: 'Failed to get photos: $e',
+      );
+    }
+  }
+
+  /// Get only the current user's photos (creator photos)
+  /// This uses the creator-specific endpoint
+  Future<ApiResponse<List<Map<String, dynamic>>>> getUserPhotosAsMap() async {
+    try {
+      final response = await makeApiRequest<List<Map<String, dynamic>>>(
+        method: 'GET',
+        endpoint: ApiConfig.endpoints.creatorPhotos,
+        fromJson: (json) {
+          if (json is List) {
+            return json.map((e) => e as Map<String, dynamic>).toList();
+          } else if (json is Map && json['data'] is List) {
+            return (json['data'] as List)
+                .map((e) => e as Map<String, dynamic>)
+                .toList();
+          }
+          return <Map<String, dynamic>>[];
+        },
+      );
+
+      if (response.success) {
+        print('✅ User photos loaded: ${response.data?.length ?? 0} photos');
+      } else {
+        print('❌ Failed to load user photos: ${response.error}');
+      }
+
+      return response;
+    } catch (e) {
+      print('❌ Error in getUserPhotosAsMap: $e');
+      return ApiResponse<List<Map<String, dynamic>>>(
+        success: false,
+        error: 'Failed to get user photos: $e',
       );
     }
   }

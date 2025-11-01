@@ -9,7 +9,7 @@ class ApiConfig {
   factory ApiConfig() => _instance;
 
   // Base URL - Updated to match your Postman collection
-  static const String baseUrl = 'https://photo-bugs-custom-backend.vercel.app';
+  static const String baseUrl = 'https://photosbybugs.com';
 
   // API versioning
   static const String apiVersion = 'v1';
@@ -74,76 +74,262 @@ class _ApiEndpoints {
   String get photos => '/photos';
   String get photoBundles => '/photo-bundles';
   String get transactions => '/transactions';
+  String get portfolio => '/portfolio';
 
-  // User endpoints - Updated with send-email endpoint
-  String get sendEmail => '$users/send-email';
+  // ============================================================================
+  // USER ENDPOINTS - Complete list from Postman
+  // ============================================================================
+
+  // Registration endpoints
   String get register => '$users/register';
+  String get registerCreator =>
+      '$users/register'; // Creator registration (duplicate kept as requested)
+  String get registerSocial =>
+      '$users/register'; // Social registration (duplicate kept as requested)
+
+  // Login endpoints
   String get login => '$users/login';
+  String get loginSocial =>
+      '$users/login'; // Social login (duplicate kept as requested)
+
+  // Email and verification
+  String get sendEmail => '$users/send-email';
   String get verifyEmail => '$users/verify-email';
+
+  // User profile and info
   String get currentUser => '$users/me';
+  String get allUsers => users;
+
+  // Storage endpoints
   String get userStorage => '$users/storage';
+  String get getStorageInfo =>
+      '$users/storage'; // Alternative name (duplicate kept as requested)
+  String get purchaseStorage => '$users/purchase-storage';
+  String get getStorage =>
+      '$users/purchase-storage'; // Alternative name (duplicate kept as requested)
+
+  // User updates
   String get updateUser => '$users/update';
   String get updatePassword => '$users/update-password';
-  String get purchaseStorage => '$users/purchase-storage';
+
+  // Favorites
   String userFavorites(String userId) => '$users/favorites/$userId';
+  String addFavorite(String userId) =>
+      '$users/favorites/$userId'; // Duplicate kept as requested
+  String deleteFavorite(String userId) =>
+      '$users/favorites/$userId'; // Duplicate kept as requested
 
-  // Notification endpoints
+  // Search
+  String get searchCreator => '$users/search-creator';
+
+  // ============================================================================
+  // NOTIFICATION ENDPOINTS - Complete list from Postman
+  // ============================================================================
+
+  String get allNotifications => notifications;
+  String get getAllNotifications =>
+      notifications; // Alternative name (duplicate kept as requested)
   String notificationById(String id) => '$notifications/$id';
+  String getNotificationById(String id) =>
+      '$notifications/$id'; // Alternative name (duplicate kept as requested)
   String get userNotifications => '$notifications/user/me';
+  String get currentUserNotifications =>
+      '$notifications/user/me'; // Alternative name (duplicate kept as requested)
+  String get getNotificationOfCurrentUser =>
+      '$notifications/user/me'; // Alternative name (duplicate kept as requested)
+  String get sendNotification => notifications;
+  String get createNotification =>
+      notifications; // Alternative name (duplicate kept as requested)
   String notificationSeen(String id) => '$notifications/$id/seen';
+  String markAsSeen(String id) =>
+      '$notifications/$id/seen'; // Alternative name (duplicate kept as requested)
+  String markAsSeend(String id) =>
+      '$notifications/$id/seen'; // Typo in Postman (duplicate kept as requested)
+  String deleteNotification(String id) => '$notifications/$id';
 
-  // Chat endpoints
+  // ============================================================================
+  // CHAT ENDPOINTS - Complete list from Postman
+  // ============================================================================
+
   String get userChats => chats;
+  String get getUserChats =>
+      chats; // Alternative name (duplicate kept as requested)
   String get createChat => chats;
+  String get createUserChat =>
+      chats; // Alternative name (duplicate kept as requested)
+  String chatById(String id) => '$chats/$id';
+  String getChatById(String id) =>
+      '$chats/$id'; // Alternative name (duplicate kept as requested)
+  String chatMessages(String chatId) => '$chats/$chatId/messages';
+  String sendMessage(String chatId) => '$chats/$chatId/messages';
+  String markMessageAsRead(String chatId, String messageId) =>
+      '$chats/$chatId/messages/$messageId';
+  String markAsRead(String chatId, String messageId) =>
+      '$chats/$chatId/messages/$messageId'; // Alternative name (duplicate kept as requested)
 
-  // Event endpoints
+  // ============================================================================
+  // EVENT ENDPOINTS - Complete list from Postman
+  // ============================================================================
+
   String get createEvent => events;
   String get allEvents => events;
+  String get getAllEvents =>
+      events; // Alternative name (duplicate kept as requested)
   String eventById(String id) => '$events/$id';
+  String getEventById(String id) =>
+      '$events/$id'; // Alternative name (duplicate kept as requested)
   String get searchEvents => '$events/search';
+  String get searchEvent =>
+      '$events/search'; // Alternative name (duplicate kept as requested)
   String get userCreatedEvents => '$events/me/created';
+  String get currentUserEvents =>
+      '$events/me/created'; // Alternative name (duplicate kept as requested)
+  String get getCurrentUserEvents =>
+      '$events/me/created'; // Alternative name (duplicate kept as requested)
   String get userPhotographerEvents => '$events/me/photographer';
+  String get currentPhotographerEvents =>
+      '$events/me/photographer'; // Alternative name (duplicate kept as requested)
+  String get getCurrentPhotographerEvents =>
+      '$events/me/photographer'; // Alternative name (duplicate kept as requested)
   String get updateEvent => '$events/update';
   String eventRecipients(String id) => '$events/$id/recipients';
+  String addRecipient(String id) =>
+      '$events/$id/recipients'; // Alternative name (duplicate kept as requested)
   String eventAccept(String id) => '$events/$id/accept';
+  String acceptEventInvitation(String id) =>
+      '$events/$id/accept'; // Alternative name (duplicate kept as requested)
+  String acceptEventInvitiation(String id) =>
+      '$events/$id/accept'; // Typo in Postman (duplicate kept as requested)
   String eventDecline(String id) => '$events/$id/decline';
+  String declineEventInvitation(String id) =>
+      '$events/$id/decline'; // Alternative name (duplicate kept as requested)
+  String declineEventInvitiation(String id) =>
+      '$events/$id/decline'; // Typo in Postman (duplicate kept as requested)
   String eventDelete(String id) => '$events/$id';
+  String deleteEvent(String id) =>
+      '$events/$id'; // Alternative name (duplicate kept as requested)
 
-  // Review endpoints
+  // ============================================================================
+  // REVIEW ENDPOINTS - Complete list from Postman
+  // ============================================================================
+
   String get allReviews => reviews;
+  String get getAllReviews =>
+      reviews; // Alternative name (duplicate kept as requested)
   String reviewById(String id) => '$reviews/$id';
+  String getReviewById(String id) =>
+      '$reviews/$id'; // Alternative name (duplicate kept as requested)
   String reviewAverage(String userId) => '$reviews/average/$userId';
+  String getAverageRatings(String userId) =>
+      '$reviews/average/$userId'; // Alternative name (duplicate kept as requested)
+  String getAverageRatingsOfUser(String userId) =>
+      '$reviews/average/$userId'; // Alternative name (duplicate kept as requested)
   String get createReview => reviews;
   String updateReview(String id) => '$reviews/$id';
   String deleteReview(String id) => '$reviews/$id';
 
-  // Folder endpoints
+  // ============================================================================
+  // FOLDER ENDPOINTS - Complete list from Postman
+  // ============================================================================
+
   String get createFolder => folders;
   String foldersByEvent(String eventId) => '$folders/event/$eventId';
+  String getFoldersByEvent(String eventId) =>
+      '$folders/event/$eventId'; // Alternative name (duplicate kept as requested)
   String folderById(String id) => '$folders/$id';
+  String getFoldersById(String id) =>
+      '$folders/$id'; // Alternative name (duplicate kept as requested)
   String folderAccept(String folderId) => '$folders/$folderId/accept';
+  String acceptInvite(String folderId) =>
+      '$folders/$folderId/accept'; // Alternative name (duplicate kept as requested)
   String folderDecline(String folderId) => '$folders/$folderId/decline';
+  String declineInvite(String folderId) =>
+      '$folders/$folderId/decline'; // Alternative name (duplicate kept as requested)
 
-  // Photo endpoints
+  // ============================================================================
+  // PHOTO ENDPOINTS - Complete list from Postman (FIXED: No duplicate /api prefix)
+  // ============================================================================
+
   String get creatorPhotos => photos;
+  String get getCreatorImages =>
+      photos; // Alternative name (duplicate kept as requested)
   String photoById(String id) => '$photos/$id';
+  String getImageById(String id) =>
+      '$photos/$id'; // Alternative name (duplicate kept as requested)
   String get uploadPhoto => photos;
+  String get uploadImage =>
+      photos; // Alternative name (duplicate kept as requested)
   String updatePhoto(String id) => '$photos/$id';
+  String updateImage(String id) =>
+      '$photos/$id'; // Alternative name (duplicate kept as requested)
   String deletePhoto(String id) => '$photos/$id';
+  String deleteImage(String id) =>
+      '$photos/$id'; // Alternative name (duplicate kept as requested)
+  String get searchPhotos => '$photos/search-photos';
+  String trackDownload(String id) => '$photos/track-download/$id';
+  String trackDownloadStats(String id) =>
+      '$photos/track-download/$id'; // Alternative name (duplicate kept as requested)
+  String get getDownloadStats => '$photos/get-download-stats';
+  String get downloadStats =>
+      '$photos/get-download-stats'; // Alternative name (duplicate kept as requested)
+  String get getAllPhotos => photos;
+  String get allPhotos =>
+      photos; // Alternative name (duplicate kept as requested)
+  String get getTrendingPhotos =>
+      '$photos/get-trending-photos'; // FIXED: No /api prefix
 
-  // Photo Bundle endpoints
+  // ============================================================================
+  // PHOTO BUNDLE ENDPOINTS - Complete list from Postman
+  // ============================================================================
+
   String bundlesByFolder(String folderId) => '$photoBundles/folder/$folderId';
+  String getBundlesByFolder(String folderId) =>
+      '$photoBundles/folder/$folderId'; // Alternative name (duplicate kept as requested)
   String bundleById(String id) => '$photoBundles/$id';
+  String getBundleById(String id) =>
+      '$photoBundles/$id'; // Alternative name (duplicate kept as requested)
   String get createBundle => photoBundles;
+  String get createPhotoBundle =>
+      photoBundles; // Alternative name (duplicate kept as requested)
   String updateBundle(String id) => '$photoBundles/$id';
+  String updatePhotoBundle(String id) =>
+      '$photoBundles/$id'; // Alternative name (duplicate kept as requested)
   String deleteBundle(String id) => '$photoBundles/$id';
+  String deletePhotoBundle(String id) =>
+      '$photoBundles/$id'; // Alternative name (duplicate kept as requested)
+  String userPhotos(String userId) => '$photoBundles/$userId/user-photos';
+  String getUserPhotos(String userId) =>
+      '$photoBundles/$userId/user-photos'; // Alternative name (duplicate kept as requested)
 
-  // Transaction endpoints
+  // ============================================================================
+  // TRANSACTION ENDPOINTS - Complete list from Postman
+  // ============================================================================
+
   String get allTransactions => transactions;
+  String get getAllTransactions =>
+      transactions; // Alternative name (duplicate kept as requested)
   String transactionById(String id) => '$transactions/$id';
+  String getTransactionById(String id) =>
+      '$transactions/$id'; // Alternative name (duplicate kept as requested)
   String sellerTransactions(String sellerId) =>
       '$transactions/seller/$sellerId';
+  String getSellerTransactions(String sellerId) =>
+      '$transactions/seller/$sellerId'; // Alternative name (duplicate kept as requested)
   String buyerTransactions(String buyerId) => '$transactions/buyer/$buyerId';
+  String getBuyerTransactions(String buyerId) =>
+      '$transactions/buyer/$buyerId'; // Alternative name (duplicate kept as requested)
+
+  // ============================================================================
+  // PORTFOLIO ENDPOINTS - Complete list from Postman
+  // ============================================================================
+
+  String get createPortfolio => portfolio;
+  String get getPortfolio => portfolio;
+  String portfolioByCreator(String creatorId) =>
+      '$portfolio/creator/$creatorId';
+  String getPortfolioByCreator(String creatorId) =>
+      '$portfolio/creator/$creatorId'; // Alternative name (duplicate kept as requested)
+  String deletePortfolio(String id) => '$portfolio/$id';
 }
 
 /// API Error Codes

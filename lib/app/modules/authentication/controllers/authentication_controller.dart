@@ -97,8 +97,8 @@ class AuthController extends GetxController {
           if (_authService.needsProfileCompletion) {
             Get.offAndToNamed(Routes.COMPLETE_PROFILE);
           } else {
-            checkAndPromptGoogleDrive();
             Get.offAllNamed(Routes.BOTTOM_NAV_BAR);
+            checkAndPromptGoogleDrive();
           }
         });
       }

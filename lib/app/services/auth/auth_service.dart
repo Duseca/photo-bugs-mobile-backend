@@ -676,6 +676,13 @@ class AuthService extends GetxService {
 
       try {
         googleUser = await _googleSignIn!.authenticate();
+
+        print('✅ ============ GOOGLE USER DETAILS ============');
+        print('✅ Google User ID: ${googleUser.id}');
+        print('✅ Google Email: ${googleUser.email}');
+        print('✅ Google Display Name: ${googleUser.displayName}');
+        print('✅ Google Photo URL: ${googleUser.photoUrl}');
+        print('✅ ===========================================');
       } on GoogleSignInException catch (e) {
         if (e.code == GoogleSignInExceptionCode.canceled) {
           return ApiResponse<auth_models.AuthResponse>(
@@ -706,7 +713,20 @@ class AuthService extends GetxService {
 
       print('🔵 Step 6: Getting authentication tokens');
       final GoogleSignInAuthentication googleAuth =
+          // ignore: await_only_futures
           await googleUser.authentication;
+
+      final GoogleSignInServerAuthorization? serverAuth = await googleUser
+          .authorizationClient
+          .authorizeServer(scopes);
+
+      // ignore: unnecessary_null_comparison
+      if (serverAuth != null && serverAuth.serverAuthCode != null) {
+        print('Server Auth Code: ${serverAuth.serverAuthCode}');
+        // Send this serverAuthCode to your backend server
+      } else {
+        print('Server Auth Code not available.');
+      }
 
       String? accessToken;
       try {
@@ -737,6 +757,7 @@ class AuthService extends GetxService {
         expiryDate:
             DateTime.now().add(const Duration(hours: 1)).millisecondsSinceEpoch,
       );
+      print('expiry date : ${tokens.expiryDate}');
 
       final socialUserInfo = auth_models.SocialUserInfo(
         id: googleUser.id,
@@ -832,10 +853,26 @@ class AuthService extends GetxService {
 
       if (loginResponse.success && loginResponse.data != null) {
         print('✅ Existing Google user logged in');
-        await _saveGoogleTokensToBackend(tokens);
+
+        // FIXED: Save tokens to backend first, then refresh user data
+        final tokenSaveResponse = await _saveGoogleTokensToBackend(tokens);
+
+        if (tokenSaveResponse.success) {
+          // IMPORTANT: Refresh user data to get updated tokens from backend
+          await refreshUserData();
+          print(
+            '✅ Google tokens updated and user data refreshed for existing user',
+          );
+          print('✅ Token expiry: ${tokens.expiryDate}');
+          print('✅ Access token set: ${tokens.accessToken.isNotEmpty}');
+        } else {
+          print('⚠️ Failed to save Google tokens: ${tokenSaveResponse.error}');
+        }
+
         return loginResponse;
       }
 
+      // For new users, tokens are included in registration
       return await _attemptSocialRegisterWithTokens(socialUserInfo, tokens);
     } catch (e) {
       return ApiResponse<auth_models.AuthResponse>(

@@ -47,6 +47,40 @@ class User {
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
+    // Debug print to see raw JSON
+    print('🔵 User.fromJson - Raw favorites data: ${json['favorites']}');
+    print('🔵 User.fromJson - Raw favourites data: ${json['favourites']}');
+
+    // Parse favorites with multiple fallbacks
+    List<String>? parsedFavorites;
+
+    // Try 'favorites' first (American spelling)
+    if (json['favorites'] != null) {
+      parsedFavorites = _parseFavoritesField(json['favorites']);
+      if (parsedFavorites != null) {
+        print(
+          '✅ Parsed ${parsedFavorites.length} favorites from "favorites" field',
+        );
+      }
+    }
+
+    // Try 'favourites' (British spelling) as fallback
+    if (parsedFavorites == null && json['favourites'] != null) {
+      parsedFavorites = _parseFavoritesField(json['favourites']);
+      if (parsedFavorites != null) {
+        print(
+          '✅ Parsed ${parsedFavorites.length} favorites from "favourites" field',
+        );
+      }
+    }
+
+    // Debug final result
+    if (parsedFavorites != null && parsedFavorites.isNotEmpty) {
+      print('✅ Final favorites list: $parsedFavorites');
+    } else {
+      print('⚠️ No favorites found in JSON');
+    }
+
     return User(
       id: json['_id'] ?? json['id'],
       name: json['name'] ?? '',
@@ -70,10 +104,7 @@ class User {
           json['settings'] != null
               ? UserSettings.fromJson(json['settings'])
               : null,
-      favorites:
-          json['favorites'] != null
-              ? List<String>.from(json['favorites'])
-              : null,
+      favorites: parsedFavorites, // Use the parsed favorites
       googleTokens:
           json['googleTokens'] != null
               ? GoogleTokens.fromJson(json['googleTokens'])
@@ -88,6 +119,59 @@ class User {
               : null,
       isEmailVerified: json['isEmailVerified'] ?? json['is_email_verified'],
     );
+  }
+
+  /// Parse favorites field - handles both array of strings and array of objects
+  static List<String>? _parseFavoritesField(dynamic favoritesData) {
+    if (favoritesData == null) return null;
+
+    if (favoritesData is! List) {
+      print('⚠️ Favorites data is not a list: ${favoritesData.runtimeType}');
+      return null;
+    }
+
+    if (favoritesData.isEmpty) {
+      print('⚠️ Favorites list is empty');
+      return [];
+    }
+
+    try {
+      // Check if first element is a String or an Object
+      final firstElement = favoritesData.first;
+
+      if (firstElement is String) {
+        // ✅ Array of strings: ["id1", "id2", ...]
+        print('📝 Parsing favorites as array of strings');
+        return List<String>.from(favoritesData);
+      } else if (firstElement is Map) {
+        // ✅ Array of objects: [{_id: "id1", name: "..."}, ...]
+        print('📝 Parsing favorites as array of objects');
+
+        final favoriteIds = <String>[];
+
+        for (final item in favoritesData) {
+          if (item is Map<String, dynamic>) {
+            // Try to get ID from multiple possible fields
+            final id = item['_id'] ?? item['id'] ?? item['user_id'];
+
+            if (id != null && id is String) {
+              favoriteIds.add(id);
+              print('   ✅ Extracted ID: $id (Name: ${item['name']})');
+            } else {
+              print('   ⚠️ Could not extract ID from: $item');
+            }
+          }
+        }
+
+        return favoriteIds.isNotEmpty ? favoriteIds : null;
+      } else {
+        print('⚠️ Unknown favorites format: ${firstElement.runtimeType}');
+        return null;
+      }
+    } catch (e) {
+      print('❌ Error parsing favorites: $e');
+      return null;
+    }
   }
 
   Map<String, dynamic> toJson() {
@@ -160,7 +244,7 @@ class User {
 
   @override
   String toString() {
-    return 'User{id: $id, name: $name, userName: $userName, email: $email, phone: $phone, bio: $bio, updatedAt: $updatedAt}';
+    return 'User{id: $id, name: $name, userName: $userName, email: $email, phone: $phone, bio: $bio, favorites: ${favorites?.length ?? 0}, updatedAt: $updatedAt}';
   }
 
   @override
