@@ -124,8 +124,9 @@ class ImageDetails extends GetView<ImageDetailsController> {
                 // Main Image
                 CommonImageView(
                   url: imageDetail.imageUrl,
-                  height: 270,
+                  height: 480,
                   width: Get.width,
+                  showWatermark: true,
                 ),
 
                 Padding(

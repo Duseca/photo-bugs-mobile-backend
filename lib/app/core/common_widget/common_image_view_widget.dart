@@ -16,8 +16,10 @@ class CommonImageView extends StatelessWidget {
   final String placeHolder;
   final Color? borderColor;
 
-  // Add fallback URL parameter
   final String? fallbackUrl;
+  final bool showWatermark;
+  final String watermarkPath;
+  final double watermarkOpacity;
 
   CommonImageView({
     this.url,
@@ -32,6 +34,9 @@ class CommonImageView extends StatelessWidget {
     this.borderWidth = 0.0,
     this.borderColor = Colors.transparent,
     this.fallbackUrl,
+    this.showWatermark = false,
+    this.watermarkPath = 'assets/images/watermark_transparent.png',
+    this.watermarkOpacity = 0.38,
   });
 
   @override
@@ -39,10 +44,8 @@ class CommonImageView extends StatelessWidget {
     return _buildImageView();
   }
 
-  /// Convert Google Drive sharing link to direct image URL
   String _convertGoogleDriveUrl(String url) {
     try {
-      // Pattern 1: https://drive.google.com/file/d/FILE_ID/view?usp=sharing
       if (url.contains('drive.google.com/file/d/')) {
         final regex = RegExp(r'drive\.google\.com/file/d/([a-zA-Z0-9_-]+)');
         final match = regex.firstMatch(url);
@@ -52,7 +55,6 @@ class CommonImageView extends StatelessWidget {
         }
       }
 
-      // Pattern 2: https://drive.google.com/open?id=FILE_ID
       if (url.contains('drive.google.com/open?id=')) {
         final regex = RegExp(r'id=([a-zA-Z0-9_-]+)');
         final match = regex.firstMatch(url);
@@ -62,8 +64,6 @@ class CommonImageView extends StatelessWidget {
         }
       }
 
-      // Pattern 3: https://drive.google.com/uc?id=FILE_ID
-      // Already in correct format, just ensure export=view parameter
       if (url.contains('drive.google.com/uc?')) {
         if (!url.contains('export=view')) {
           if (url.contains('id=')) {
@@ -77,7 +77,6 @@ class CommonImageView extends StatelessWidget {
         }
       }
 
-      // Pattern 4: https://docs.google.com/uc?id=FILE_ID
       if (url.contains('docs.google.com/uc?')) {
         final regex = RegExp(r'id=([a-zA-Z0-9_-]+)');
         final match = regex.firstMatch(url);
@@ -87,7 +86,6 @@ class CommonImageView extends StatelessWidget {
         }
       }
 
-      // If no pattern matches, return original URL
       return url;
     } catch (e) {
       print('Error converting Google Drive URL: $e');
@@ -95,28 +93,106 @@ class CommonImageView extends StatelessWidget {
     }
   }
 
+  Widget _buildRepeatingWatermark(double imageWidth, double imageHeight) {
+    if (!showWatermark) return SizedBox.shrink();
+
+    // Calculate watermark size
+    double watermarkSize;
+    if (imageWidth < 300 || imageHeight < 300) {
+      watermarkSize = 70;
+    } else if (imageWidth < 500 || imageHeight < 500) {
+      watermarkSize = 90;
+    } else {
+      watermarkSize = 110;
+    }
+
+    final spacing = watermarkSize * 0.5;
+
+    // Calculate number of watermarks needed
+    final numColumns =
+        ((imageWidth + spacing) / (watermarkSize + spacing)).ceil() + 1;
+    final numRows =
+        ((imageHeight + spacing) / (watermarkSize + spacing)).ceil() + 1;
+
+    return Transform.rotate(
+      angle: -0.4, // Diagonal angle
+      child: Opacity(
+        opacity: watermarkOpacity,
+        child: OverflowBox(
+          maxWidth: imageWidth * 2,
+          maxHeight: imageHeight * 2,
+          child: Wrap(
+            spacing: spacing,
+            runSpacing: spacing,
+            children: List.generate(
+              numRows * numColumns,
+              (index) => SizedBox(
+                width: watermarkSize,
+                height: watermarkSize,
+                child: Image.asset(
+                  watermarkPath,
+                  width: watermarkSize,
+                  height: watermarkSize,
+                  fit: BoxFit.contain,
+                  color: null, // No color filter
+                  colorBlendMode: BlendMode.dstATop,
+                  errorBuilder: (context, error, stackTrace) {
+                    print('Watermark not found: $watermarkPath');
+                    return SizedBox.shrink();
+                  },
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildImageView() {
+    final imageWidth = width ?? 300.0;
+    final imageHeight = height ?? 300.0;
+
     if (svgPath != null && svgPath!.isNotEmpty) {
-      return Container(
-        height: height,
-        width: width,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(radius!),
-          child: SvgPicture.asset(
-            svgPath!,
-            height: height,
-            width: width,
-            fit: fit,
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(radius!),
+        child: SizedBox(
+          height: height,
+          width: width,
+          child: Stack(
+            children: [
+              SvgPicture.asset(
+                svgPath!,
+                height: height,
+                width: width,
+                fit: fit,
+              ),
+              if (showWatermark)
+                Positioned.fill(
+                  child: _buildRepeatingWatermark(imageWidth, imageHeight),
+                ),
+            ],
           ),
         ),
       );
     } else if (file != null && file!.path.isNotEmpty) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(radius!),
-        child: Image.file(file!, height: height, width: width, fit: fit),
+        child: SizedBox(
+          height: height,
+          width: width,
+          child: Stack(
+            children: [
+              Image.file(file!, height: height, width: width, fit: fit),
+              if (showWatermark)
+                Positioned.fill(
+                  child: _buildRepeatingWatermark(imageWidth, imageHeight),
+                ),
+            ],
+          ),
+        ),
       );
     } else if (url != null && url!.isNotEmpty) {
-      // Convert Google Drive URLs to direct image URLs
       final convertedUrl = _convertGoogleDriveUrl(url!);
       final convertedFallbackUrl =
           fallbackUrl != null ? _convertGoogleDriveUrl(fallbackUrl!) : null;
@@ -128,36 +204,16 @@ class CommonImageView extends StatelessWidget {
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(radius!),
-          child: CachedNetworkImage(
+          child: SizedBox(
             height: height,
             width: width,
-            fit: fit,
-            imageUrl: convertedUrl,
-            placeholder:
-                (context, url) => Container(
-                  height: 23,
-                  width: 23,
-                  child: Center(
-                    child: SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                        color: kSecondaryColor,
-                        backgroundColor: Colors.grey.shade100,
-                      ),
-                    ),
-                  ),
-                ),
-            errorWidget: (context, url, error) {
-              // Try fallback URL if provided and different from main URL
-              if (convertedFallbackUrl != null &&
-                  convertedFallbackUrl.isNotEmpty &&
-                  convertedFallbackUrl != convertedUrl) {
-                return CachedNetworkImage(
+            child: Stack(
+              children: [
+                CachedNetworkImage(
                   height: height,
                   width: width,
                   fit: fit,
-                  imageUrl: convertedFallbackUrl,
+                  imageUrl: convertedUrl,
                   placeholder:
                       (context, url) => Container(
                         height: 23,
@@ -173,24 +229,54 @@ class CommonImageView extends StatelessWidget {
                           ),
                         ),
                       ),
-                  errorWidget:
-                      (context, url, error) => Image.asset(
-                        placeHolder,
+                  errorWidget: (context, url, error) {
+                    if (convertedFallbackUrl != null &&
+                        convertedFallbackUrl.isNotEmpty &&
+                        convertedFallbackUrl != convertedUrl) {
+                      return CachedNetworkImage(
                         height: height,
                         width: width,
                         fit: fit,
-                      ),
-                );
-              }
+                        imageUrl: convertedFallbackUrl,
+                        placeholder:
+                            (context, url) => Container(
+                              height: 23,
+                              width: 23,
+                              child: Center(
+                                child: SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    color: kSecondaryColor,
+                                    backgroundColor: Colors.grey.shade100,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        errorWidget:
+                            (context, url, error) => Image.asset(
+                              placeHolder,
+                              height: height,
+                              width: width,
+                              fit: fit,
+                            ),
+                      );
+                    }
 
-              // If no fallback or fallback is same as main URL, show placeholder
-              return Image.asset(
-                placeHolder,
-                height: height,
-                width: width,
-                fit: fit,
-              );
-            },
+                    return Image.asset(
+                      placeHolder,
+                      height: height,
+                      width: width,
+                      fit: fit,
+                    );
+                  },
+                ),
+                if (showWatermark)
+                  Positioned.fill(
+                    child: _buildRepeatingWatermark(imageWidth, imageHeight),
+                  ),
+              ],
+            ),
           ),
         ),
       );
@@ -202,11 +288,18 @@ class CommonImageView extends StatelessWidget {
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(radius!),
-          child: Image.asset(
-            imagePath!,
+          child: SizedBox(
             height: height,
             width: width,
-            fit: fit,
+            child: Stack(
+              children: [
+                Image.asset(imagePath!, height: height, width: width, fit: fit),
+                if (showWatermark)
+                  Positioned.fill(
+                    child: _buildRepeatingWatermark(imageWidth, imageHeight),
+                  ),
+              ],
+            ),
           ),
         ),
       );

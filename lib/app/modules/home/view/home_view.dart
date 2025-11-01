@@ -204,6 +204,8 @@ class Home extends GetView<HomeController> {
                     height: 48,
                     width: 48,
                     radius: 8,
+
+                    showWatermark: true,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
