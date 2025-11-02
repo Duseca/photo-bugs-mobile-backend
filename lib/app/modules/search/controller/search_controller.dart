@@ -1,7 +1,11 @@
+// modules/search/controllers/search_controller.dart
+
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:photo_bug/app/data/models/event_model.dart';
-
+import 'package:photo_bug/app/data/models/location_model.dart';
 import 'package:photo_bug/app/modules/creator_events/widgets/send_event_quote.dart';
 import 'package:photo_bug/app/routes/app_pages.dart';
 import 'package:photo_bug/app/services/event_service.dart/event_service.dart';
@@ -12,7 +16,7 @@ class SearchController extends GetxController {
 
   // Observable variables
   final RxList<Event> searchResults = <Event>[].obs;
-  final RxList<Event> allEvents = <Event>[].obs; // Cache all events
+  final RxList<Event> allEvents = <Event>[].obs;
   final RxBool isLoading = false.obs;
   final RxBool isSearching = false.obs;
   final RxString searchQuery = ''.obs;
@@ -20,44 +24,42 @@ class SearchController extends GetxController {
 
   // Search filters
   final RxString locationFilter = ''.obs;
-  final RxString typeFilter = ''.obs; // Event type (Wedding, Birthday, etc.)
-  final RxString roleFilter = ''.obs; // Photographer, Videographer, etc.
-  final Rx<RangeValues> radiusRange = const RangeValues(0, 15).obs;
-  final RxInt selectedRating = 0.obs; // 0 means "All"
+  final RxString typeFilter = ''.obs;
+  final RxString roleFilter = ''.obs;
+  final Rx<RangeValues> radiusRange = const RangeValues(0, 50).obs;
+  final RxInt selectedRating = 0.obs;
 
   // Text controllers
   final TextEditingController searchTextController = TextEditingController();
   final TextEditingController locationController = TextEditingController();
 
-  // Filter options
+  // Filter options - will be populated from API or predefined
   final List<String> typeOptions = [
+    'Photography Workshop',
     'Wedding',
     'Birthday',
-    'Corporate',
+    'Corporate Event',
     'Party',
   ];
+
   final List<String> roleOptions = [
+    'Wildlife Photographer',
     'Photographer',
     'Videographer',
-    'DJ',
-    'Host',
+    'Event Photographer',
   ];
+
+  // Current user location (can be set from GPS)
+  Location? currentLocation;
 
   @override
   void onInit() {
     super.onInit();
-    _eventService = EventService.instance;
+    _initializeService();
     loadInitialResults();
 
-    // Listen to search text changes
-    searchTextController.addListener(() {
-      searchQuery.value = searchTextController.text;
-      if (searchQuery.value.isNotEmpty) {
-        _debounceSearch();
-      } else {
-        _applyLocalFilters();
-      }
-    });
+    // Listen to search text changes with debounce
+    searchTextController.addListener(_onSearchTextChanged);
   }
 
   @override
@@ -67,126 +69,134 @@ class SearchController extends GetxController {
     super.onClose();
   }
 
-  // Load initial search results (all events)
-  Future<void> loadInitialResults() async {
-    isLoading.value = true;
+  void _initializeService() {
     try {
+      _eventService = EventService.instance;
+    } catch (e) {
+      print('❌ Error initializing EventService: $e');
+    }
+  }
+
+  /// Load initial search results (all events)
+  Future<void> loadInitialResults() async {
+    try {
+      isLoading.value = true;
+
       final response = await _eventService.getAllEvents();
 
       if (response.success && response.data != null) {
         allEvents.assignAll(response.data!);
         searchResults.assignAll(response.data!);
         resultsCount.value = response.data!.length;
+        print('✅ Loaded ${response.data!.length} events');
       } else {
-        Get.snackbar(
-          'Error',
-          response.error ?? 'Failed to load events',
-          snackPosition: SnackPosition.BOTTOM,
-        );
+        _showError(response.error ?? 'Failed to load events');
         allEvents.clear();
         searchResults.clear();
         resultsCount.value = 0;
       }
     } catch (e) {
-      Get.snackbar(
-        'Error',
-        'Failed to load search results: $e',
-        snackPosition: SnackPosition.BOTTOM,
-      );
-      allEvents.clear();
-      searchResults.clear();
-      resultsCount.value = 0;
+      print('❌ Error loading initial results: $e');
+      _showError('Failed to load search results');
     } finally {
       isLoading.value = false;
     }
   }
 
-  // Perform search with debouncing
-  void _debounceSearch() {
-    isSearching.value = true;
+  /// Handle search text changes with debounce
+  void _onSearchTextChanged() {
+    searchQuery.value = searchTextController.text;
 
-    // Debounce search by 500ms
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (searchQuery.value == searchTextController.text) {
-        performSearch();
-      }
+    // Cancel previous search
+    if (_searchDebounceTimer?.isActive ?? false) {
+      _searchDebounceTimer!.cancel();
+    }
+
+    // Start new search after 500ms
+    _searchDebounceTimer = Timer(const Duration(milliseconds: 500), () {
+      performSearch();
     });
   }
 
-  // Perform search with current query and filters
+  Timer? _searchDebounceTimer;
+
+  /// Perform search with current query and filters
   Future<void> performSearch() async {
+    // If no search query and no active filters, show all events
     if (searchQuery.value.isEmpty && !_hasActiveFilters()) {
       searchResults.assignAll(allEvents);
       resultsCount.value = allEvents.length;
-      isSearching.value = false;
       return;
     }
 
-    isSearching.value = true;
     try {
-      // If we have location/role/type/distance filters, use API search
+      isSearching.value = true;
+
+      // Use API search if we have location/role/type filters
       if (_shouldUseApiSearch()) {
         await _performApiSearch();
       } else {
-        // Otherwise, use local filtering
+        // Use local filtering for text search only
         _applyLocalFilters();
       }
     } catch (e) {
-      Get.snackbar(
-        'Error',
-        'Search failed: $e',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      print('❌ Search error: $e');
+      _showError('Search failed');
     } finally {
       isSearching.value = false;
     }
   }
 
-  // Determine if we should use API search
+  /// Determine if we should use API search
   bool _shouldUseApiSearch() {
-    return roleFilter.value.isNotEmpty ||
-        (locationFilter.value.isNotEmpty && radiusRange.value.end > 0);
+    return locationFilter.value.isNotEmpty ||
+        roleFilter.value.isNotEmpty ||
+        typeFilter.value.isNotEmpty;
   }
 
-  // Perform API search with EventSearchParams
+  /// Perform API search with filters
   Future<void> _performApiSearch() async {
+    // Parse location coordinates from locationController
+    Location? searchLocation;
+    if (locationFilter.value.isNotEmpty) {
+      searchLocation = _parseLocationFromText(locationFilter.value);
+    }
+
     final searchParams = EventSearchParams(
+      location: searchLocation,
       role: roleFilter.value.isNotEmpty ? roleFilter.value : null,
       type: typeFilter.value.isNotEmpty ? typeFilter.value : null,
       distance: radiusRange.value.end > 0 ? radiusRange.value.end : null,
-      // Note: Location would need coordinates from locationController
-      // You might need to geocode the location string first
     );
+
+    print('🔍 Searching with params: ${searchParams.toQueryParams()}');
 
     final response = await _eventService.searchEvents(searchParams);
 
     if (response.success && response.data != null) {
-      // Apply local filters on top of API results
       List<Event> results = response.data!;
 
-      // Apply text search locally
+      // Apply text search filter locally on API results
       if (searchQuery.value.isNotEmpty) {
         results = _filterByQuery(results);
       }
 
       searchResults.assignAll(results);
       resultsCount.value = results.length;
+
+      print('✅ Search completed: ${results.length} results');
     } else {
-      Get.snackbar(
-        'Error',
-        response.error ?? 'Search failed',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      _showError(response.error ?? 'Search failed');
       searchResults.clear();
       resultsCount.value = 0;
     }
   }
 
-  // Apply filters locally on cached events
+  /// Apply filters locally on cached events
   void _applyLocalFilters() {
     List<Event> filtered = List.from(allEvents);
 
-    // Filter by search query (name, type)
+    // Filter by search query
     if (searchQuery.value.isNotEmpty) {
       filtered = _filterByQuery(filtered);
     }
@@ -213,14 +223,11 @@ class SearchController extends GetxController {
               .toList();
     }
 
-    // Note: Location filtering by coordinates would require distance calculation
-    // This is better handled by API search with EventSearchParams
-
     searchResults.assignAll(filtered);
     resultsCount.value = filtered.length;
   }
 
-  // Filter events by search query
+  /// Filter events by search query
   List<Event> _filterByQuery(List<Event> events) {
     final query = searchQuery.value.toLowerCase();
     return events.where((event) {
@@ -234,76 +241,78 @@ class SearchController extends GetxController {
     }).toList();
   }
 
-  // Apply filters
-  void applyFilters() async {
-    isLoading.value = true;
+  /// Parse location from text (expects format: "lat,lng")
+  Location? _parseLocationFromText(String text) {
+    try {
+      final parts = text.split(',');
+      if (parts.length == 2) {
+        final lat = double.parse(parts[0].trim());
+        final lng = double.parse(parts[1].trim());
+        // Use the factory method that accepts longitude, latitude in correct order
+        return Location.fromCoordinates(lng, lat);
+      }
+    } catch (e) {
+      print('❌ Failed to parse location: $e');
+    }
+    return null;
+  }
+
+  /// Apply filters and close bottom sheet
+  Future<void> applyFilters() async {
     try {
       await performSearch();
-
       Get.back(); // Close filter bottom sheet
-      Get.snackbar(
-        'Success',
-        'Filters applied - ${resultsCount.value} results found',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      _showSuccess('Filters applied - ${resultsCount.value} results found');
     } catch (e) {
-      Get.snackbar(
-        'Error',
-        'Failed to apply filters: $e',
-        snackPosition: SnackPosition.BOTTOM,
-      );
-    } finally {
-      isLoading.value = false;
+      _showError('Failed to apply filters');
     }
   }
 
-  // Clear all filters
+  /// Clear all filters
   void clearFilters() {
     locationFilter.value = '';
     typeFilter.value = '';
     roleFilter.value = '';
-    radiusRange.value = const RangeValues(0, 15);
+    radiusRange.value = const RangeValues(0, 50);
     selectedRating.value = 0;
 
     locationController.clear();
     searchTextController.clear();
 
-    _eventService.clearSearchResults();
     searchResults.assignAll(allEvents);
     resultsCount.value = allEvents.length;
   }
 
-  // Check if there are active filters
+  /// Check if there are active filters
   bool _hasActiveFilters() {
     return locationFilter.value.isNotEmpty ||
         typeFilter.value.isNotEmpty ||
         roleFilter.value.isNotEmpty ||
-        selectedRating.value > 0 ||
         radiusRange.value.start != 0 ||
-        radiusRange.value.end != 15;
+        radiusRange.value.end != 50;
   }
 
-  // Set type filter
+  /// Set type filter
   void setTypeFilter(String? type) {
     typeFilter.value = type ?? '';
   }
 
-  // Set role filter
+  /// Set role filter
   void setRoleFilter(String? role) {
     roleFilter.value = role ?? '';
   }
 
-  // Set radius range
+  /// Set radius range
   void setRadiusRange(RangeValues range) {
     radiusRange.value = range;
   }
 
-  // Set selected rating
+  /// Set selected rating
   void setSelectedRating(int rating) {
     selectedRating.value = rating;
   }
 
-  // Navigate to search details
+  /// Navigate to search details
   void navigateToSearchDetails(Event event) {
     Get.toNamed(
       Routes.SEARCH_DETAILS,
@@ -311,16 +320,12 @@ class SearchController extends GetxController {
     );
   }
 
-  // Show map view
+  /// Show map view
   void showMapView() {
-    Get.snackbar(
-      'Map View',
-      'Map view feature coming soon!',
-      snackPosition: SnackPosition.BOTTOM,
-    );
+    _showInfo('Map view feature coming soon!');
   }
 
-  // Refresh search results
+  /// Refresh search results
   Future<void> refreshResults() async {
     await loadInitialResults();
     if (searchQuery.value.isNotEmpty || _hasActiveFilters()) {
@@ -328,11 +333,46 @@ class SearchController extends GetxController {
     }
   }
 
-  // Get formatted results text
+  /// Get formatted results text
   String get resultsText => '${resultsCount.value} results found';
+
+  /// Show success message
+  void _showSuccess(String message) {
+    Get.snackbar(
+      'Success',
+      message,
+      snackPosition: SnackPosition.BOTTOM,
+      backgroundColor: Colors.green,
+      colorText: Colors.white,
+      duration: const Duration(seconds: 2),
+    );
+  }
+
+  /// Show error message
+  void _showError(String message) {
+    Get.snackbar(
+      'Error',
+      message,
+      snackPosition: SnackPosition.BOTTOM,
+      backgroundColor: Colors.red,
+      colorText: Colors.white,
+      duration: const Duration(seconds: 3),
+    );
+  }
+
+  /// Show info message
+  void _showInfo(String message) {
+    Get.snackbar(
+      'Info',
+      message,
+      snackPosition: SnackPosition.BOTTOM,
+      duration: const Duration(seconds: 2),
+    );
+  }
 }
 
-// controllers/search_details_controller.dart
+// ==================== SEARCH DETAILS CONTROLLER ====================
+
 class SearchDetailsController extends GetxController {
   // Services
   late final EventService _eventService;
@@ -345,73 +385,70 @@ class SearchDetailsController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    _eventService = EventService.instance;
+    _initializeService();
+    _loadArguments();
+  }
 
-    // Get event data from arguments
+  void _initializeService() {
+    try {
+      _eventService = EventService.instance;
+    } catch (e) {
+      print('❌ Error initializing EventService: $e');
+    }
+  }
+
+  void _loadArguments() {
     final arguments = Get.arguments;
     if (arguments != null) {
       eventId.value = arguments['eventId'] ?? '';
 
-      // If event object is passed directly, use it
+      // If event object is passed, use it
       if (arguments['event'] != null) {
         eventDetails.value = arguments['event'] as Event;
       }
     }
 
-    // If no event details passed, load from API
+    // If no event details, load from API
     if (eventDetails.value == null && eventId.value.isNotEmpty) {
       loadEventDetails();
     }
   }
 
-  // Load event details from API
+  /// Load event details from API
   Future<void> loadEventDetails() async {
     if (eventId.value.isEmpty) {
-      Get.snackbar(
-        'Error',
-        'Invalid event ID',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      _showError('Invalid event ID');
       return;
     }
 
-    isLoading.value = true;
     try {
+      isLoading.value = true;
+
       final response = await _eventService.getEventById(eventId.value);
 
       if (response.success && response.data != null) {
         eventDetails.value = response.data;
+        print('✅ Event details loaded: ${response.data!.name}');
       } else {
-        Get.snackbar(
-          'Error',
-          response.error ?? 'Failed to load event details',
-          snackPosition: SnackPosition.BOTTOM,
-        );
+        _showError(response.error ?? 'Failed to load event details');
       }
     } catch (e) {
-      Get.snackbar(
-        'Error',
-        'Failed to load event details: $e',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      print('❌ Error loading event details: $e');
+      _showError('Failed to load event details');
     } finally {
       isLoading.value = false;
     }
   }
 
-  // Share event
+  /// Share event
   void shareEvent() {
     if (eventDetails.value != null) {
-      // Implement actual sharing functionality
-      Get.snackbar(
-        'Share',
-        'Sharing: ${eventDetails.value!.name}',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      _showInfo('Sharing: ${eventDetails.value!.name}');
+      // TODO: Implement actual sharing
     }
   }
 
-  // Navigate to send quote
+  /// Navigate to send quote
   void navigateToSendQuote() {
     if (eventDetails.value != null) {
       Get.to(
@@ -424,47 +461,22 @@ class SearchDetailsController extends GetxController {
     }
   }
 
-  // Refresh event details
+  /// Refresh event details
   Future<void> refreshEventDetails() async {
     await loadEventDetails();
   }
 
-  // Get recipient images (limited to display)
-  List<String> get recipientImages {
-    if (eventDetails.value == null || eventDetails.value!.recipients == null) {
-      return [];
-    }
-    // Map recipient IDs to images if needed
-    // This might require additional API calls to get user details
-    return eventDetails.value!.recipients!.take(5).map((recipient) {
-      // Return placeholder or fetch user images
-      return 'placeholder_image_url';
-    }).toList();
-  }
+  // ==================== GETTERS ====================
 
-  // Get recipient count
-  int get recipientCount {
-    return eventDetails.value?.recipients?.length ?? 0;
-  }
+  /// Get recipient images
 
-  // Format date for display
+  /// Get recipient count
+  int get recipientCount => eventDetails.value?.recipients?.length ?? 0;
+
+  /// Format date for display
   String get formattedDate {
     if (eventDetails.value?.date == null) return '';
     final date = eventDetails.value!.date!;
-    return '${date.day} ${_getMonthName(date.month)}, ${date.year}';
-  }
-
-  // Format time for display (using Event's computed properties)
-  String get formattedStartTime {
-    return eventDetails.value?.formattedStartTime ?? '';
-  }
-
-  String get formattedEndTime {
-    return eventDetails.value?.formattedEndTime ?? '';
-  }
-
-  // Helper to get month name
-  String _getMonthName(int month) {
     const months = [
       'Jan',
       'Feb',
@@ -479,47 +491,61 @@ class SearchDetailsController extends GetxController {
       'Nov',
       'Dec',
     ];
-    return months[month - 1];
+    return '${date.day} ${months[date.month - 1]}, ${date.year}';
   }
 
-  // Get event type display text
-  String get eventTypeText {
-    return eventDetails.value?.type ?? 'Event';
+  /// Format start time
+  String get formattedStartTime {
+    return eventDetails.value?.formattedStartTime ?? '';
   }
 
-  // Get location text
+  /// Format end time
+  String get formattedEndTime {
+    return eventDetails.value?.formattedEndTime ?? '';
+  }
+
+  /// Get location text
   String get locationText {
     final location = eventDetails.value?.location;
-    if (location == null) return 'Location not specified';
+    if (location == null) return '';
 
-    // Format coordinates as "Lat: X.XX, Lng: Y.YY"
+    // Return formatted coordinates
     return 'Lat: ${location.latitude.toStringAsFixed(4)}, Lng: ${location.longitude.toStringAsFixed(4)}';
   }
 
-  // Get event name
-  String get eventName {
-    return eventDetails.value?.name ?? 'Untitled Event';
+  /// Get event name
+  String get eventName => eventDetails.value?.name ?? 'Event Details';
+
+  /// Get event image
+  String? get eventImage => eventDetails.value?.image;
+
+  /// Check if user can send quote
+  bool get canSendQuote => eventDetails.value != null;
+
+  /// Show success message
+  void _showSuccess(String message) {
+    Get.snackbar(
+      'Success',
+      message,
+      snackPosition: SnackPosition.BOTTOM,
+      backgroundColor: Colors.green,
+      colorText: Colors.white,
+    );
   }
 
-  // Get event image
-  String? get eventImage {
-    return eventDetails.value?.image;
+  /// Show error message
+  void _showError(String message) {
+    Get.snackbar(
+      'Error',
+      message,
+      snackPosition: SnackPosition.BOTTOM,
+      backgroundColor: Colors.red,
+      colorText: Colors.white,
+    );
   }
 
-  // Check if user can send quote (is photographer)
-  bool get canSendQuote {
-    // Add logic to check if current user is a photographer/creator
-    // and can send quotes for this event
-    return eventDetails.value != null;
-  }
-
-  // Get event status text
-  String get statusText {
-    return eventDetails.value?.status.value ?? 'pending';
-  }
-
-  // Get role text
-  String get roleText {
-    return eventDetails.value?.role ?? '';
+  /// Show info message
+  void _showInfo(String message) {
+    Get.snackbar('Info', message, snackPosition: SnackPosition.BOTTOM);
   }
 }

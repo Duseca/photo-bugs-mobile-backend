@@ -1,3 +1,5 @@
+// modules/search/views/search_details.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter_image_stack/flutter_image_stack.dart';
 import 'package:get/get.dart';
@@ -20,42 +22,7 @@ class SearchDetails extends GetView<SearchDetailsController> {
       appBar: _buildAppBar(),
       body: RefreshIndicator(
         onRefresh: controller.refreshEventDetails,
-        child: Obx(() {
-          if (controller.isLoading.value) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          if (controller.eventDetails.value == null) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(40),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.error_outline,
-                      size: 64,
-                      color: Colors.grey.shade400,
-                    ),
-                    const SizedBox(height: 16),
-                    MyText(
-                      text: 'Failed to load event details',
-                      size: 16,
-                      weight: FontWeight.w500,
-                    ),
-                    const SizedBox(height: 16),
-                    MyButton(
-                      buttonText: 'Retry',
-                      onTap: controller.loadEventDetails,
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }
-
-          return _buildContent();
-        }),
+        child: Obx(() => _buildBody()),
       ),
     );
   }
@@ -78,7 +45,15 @@ class SearchDetails extends GetView<SearchDetailsController> {
     );
   }
 
-  Widget _buildContent() {
+  Widget _buildBody() {
+    if (controller.isLoading.value && controller.eventDetails.value == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (controller.eventDetails.value == null) {
+      return _buildErrorState();
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -91,10 +66,10 @@ class SearchDetails extends GetView<SearchDetailsController> {
               _buildEventInfo(),
               const SizedBox(height: 12),
               _buildRecipients(),
-              _buildDivider(),
+              if (controller.recipientCount > 0) _buildDivider(),
               _buildEventTimings(),
-              if (controller.eventDetails.value?.role != null ||
-                  controller.eventDetails.value?.matureContent == true)
+              if (controller.formattedStartTime.isNotEmpty ||
+                  controller.formattedEndTime.isNotEmpty)
                 _buildDivider(),
               _buildAdditionalInfo(),
             ],
@@ -105,14 +80,48 @@ class SearchDetails extends GetView<SearchDetailsController> {
     );
   }
 
-  Widget _buildEventImage() {
-    return Obx(
-      () => CommonImageView(
-        imagePath: controller.eventImage ?? Assets.imagesEventImage,
-        height: 220,
-        radius: 8,
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(40),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 64, color: Colors.red.shade300),
+            const SizedBox(height: 16),
+            MyText(
+              text: 'Failed to load event',
+              size: 16,
+              weight: FontWeight.w600,
+            ),
+            const SizedBox(height: 16),
+            MyButton(buttonText: 'Retry', onTap: controller.loadEventDetails),
+          ],
+        ),
       ),
     );
+  }
+
+  Widget _buildEventImage() {
+    return Obx(() {
+      final imageUrl = controller.eventImage;
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child:
+            imageUrl != null && imageUrl.isNotEmpty
+                ? CommonImageView(url: imageUrl, height: 220, fit: BoxFit.cover)
+                : Container(
+                  height: 220,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Center(
+                    child: Icon(Icons.event, size: 80, color: Colors.grey),
+                  ),
+                ),
+      );
+    });
   }
 
   Widget _buildEventInfo() {
@@ -123,46 +132,57 @@ class SearchDetails extends GetView<SearchDetailsController> {
         children: [
           // Date
           if (controller.formattedDate.isNotEmpty)
-            MyText(
-              text: controller.formattedDate,
-              size: 11,
-              color: kQuaternaryColor,
-              weight: FontWeight.w500,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              paddingBottom: 8,
+            Row(
+              children: [
+                Icon(Icons.calendar_today, size: 14, color: kQuaternaryColor),
+                const SizedBox(width: 6),
+                MyText(
+                  text: controller.formattedDate,
+                  size: 12,
+                  color: kQuaternaryColor,
+                  weight: FontWeight.w500,
+                ),
+              ],
             ),
+          const SizedBox(height: 8),
 
           // Event Name
           MyText(
             text: controller.eventName,
-            size: 18,
-            weight: FontWeight.w600,
-            maxLines: 2,
+            size: 20,
+            weight: FontWeight.w700,
+            maxLines: 3,
             overflow: TextOverflow.ellipsis,
-            paddingBottom: 8,
           ),
+          const SizedBox(height: 12),
 
           // Location
           if (controller.locationText.isNotEmpty)
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Image.asset(Assets.imagesLocation, height: 16),
-                ),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: MyText(
-                    text: controller.locationText,
-                    size: 12,
-                    color: kQuaternaryColor,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Image.asset(Assets.imagesLocation, height: 16),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: MyText(
+                      text: controller.locationText,
+                      size: 12,
+                      color: kQuaternaryColor,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
             ),
 
           // Badges
@@ -177,12 +197,11 @@ class SearchDetails extends GetView<SearchDetailsController> {
                     _buildInfoBadge('Type', event.type!, kSecondaryColor),
                   if (event.role != null && event.role!.isNotEmpty)
                     _buildInfoBadge('Role', event.role!, kPrimaryColor),
-                  if (event.status != EventStatus.pending)
-                    _buildInfoBadge(
-                      'Status',
-                      event.status.value.toUpperCase(),
-                      _getStatusColor(event.status),
-                    ),
+                  _buildInfoBadge(
+                    'Status',
+                    event.status.value.toUpperCase(),
+                    _getStatusColor(event.status),
+                  ),
                 ],
               ),
             ),
@@ -208,7 +227,7 @@ class SearchDetails extends GetView<SearchDetailsController> {
             color: color.withOpacity(0.7),
             weight: FontWeight.w500,
           ),
-          MyText(text: value, size: 11, color: color, weight: FontWeight.w600),
+          MyText(text: value, size: 11, color: color, weight: FontWeight.w700),
         ],
       ),
     );
@@ -242,30 +261,27 @@ class SearchDetails extends GetView<SearchDetailsController> {
             weight: FontWeight.w600,
             paddingBottom: 8,
           ),
-          Wrap(
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              if (controller.recipientImages.isNotEmpty)
-                FlutterImageStack(
-                  imageList: controller.recipientImages,
-                  showTotalCount: false,
-                  totalCount: controller.recipientCount,
-                  itemRadius: 20,
-                  itemCount: controller.recipientImages.length.clamp(0, 5),
-                  itemBorderWidth: 2,
-                  itemBorderColor: kInputBorderColor,
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: kInputBorderColor),
+            ),
+            child: Row(
+              children: [
+                const SizedBox(width: 8),
+                Expanded(
+                  child: MyText(
+                    text:
+                        '${controller.recipientCount} ${controller.recipientCount == 1 ? 'Recipient' : 'Recipients'}',
+                    size: 12,
+                    color: kSecondaryColor,
+                    weight: FontWeight.w600,
+                  ),
                 ),
-              MyText(
-                text:
-                    '${controller.recipientCount} ${controller.recipientCount == 1 ? 'Recipient' : 'Recipients'}',
-                size: 12,
-                color: kSecondaryColor,
-                weight: FontWeight.w500,
-                decoration: TextDecoration.underline,
-                decorationColor: kSecondaryColor,
-                paddingLeft: 4,
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       );
@@ -288,41 +304,62 @@ class SearchDetails extends GetView<SearchDetailsController> {
             weight: FontWeight.w600,
             paddingBottom: 12,
           ),
-
-          // Start Time
-          if (hasStartTime)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  Image.asset(Assets.imagesClock, height: 16),
-                  const SizedBox(width: 8),
-                  MyText(text: 'Start Time', size: 12, color: kQuaternaryColor),
-                  const Spacer(),
-                  MyText(
-                    text: controller.formattedStartTime,
-                    size: 13,
-                    weight: FontWeight.w500,
-                  ),
-                ],
-              ),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.grey[50],
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: kInputBorderColor),
             ),
-
-          // End Time
-          if (hasEndTime)
-            Row(
+            child: Column(
               children: [
-                Image.asset(Assets.imagesClock, height: 16),
-                const SizedBox(width: 8),
-                MyText(text: 'End Time', size: 12, color: kQuaternaryColor),
-                const Spacer(),
-                MyText(
-                  text: controller.formattedEndTime,
-                  size: 13,
-                  weight: FontWeight.w500,
-                ),
+                // Start Time
+                if (hasStartTime)
+                  Row(
+                    children: [
+                      Image.asset(Assets.imagesClock, height: 16),
+                      const SizedBox(width: 8),
+                      MyText(
+                        text: 'Start Time',
+                        size: 12,
+                        color: kQuaternaryColor,
+                      ),
+                      const Spacer(),
+                      MyText(
+                        text: controller.formattedStartTime,
+                        size: 13,
+                        weight: FontWeight.w600,
+                      ),
+                    ],
+                  ),
+                if (hasStartTime && hasEndTime)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    child: Divider(height: 1),
+                  ),
+
+                // End Time
+                if (hasEndTime)
+                  Row(
+                    children: [
+                      Image.asset(Assets.imagesClock, height: 16),
+                      const SizedBox(width: 8),
+                      MyText(
+                        text: 'End Time',
+                        size: 12,
+                        color: kQuaternaryColor,
+                      ),
+                      const Spacer(),
+                      MyText(
+                        text: controller.formattedEndTime,
+                        size: 13,
+                        weight: FontWeight.w600,
+                      ),
+                    ],
+                  ),
               ],
             ),
+          ),
         ],
       );
     });
@@ -333,37 +370,29 @@ class SearchDetails extends GetView<SearchDetailsController> {
       final event = controller.eventDetails.value;
       if (event == null) return const SizedBox.shrink();
 
-      final hasMatureContent = event.matureContent;
+      if (!event.matureContent) return const SizedBox.shrink();
 
-      if (!hasMatureContent) return const SizedBox.shrink();
-
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (hasMatureContent)
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.orange.withOpacity(0.3)),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.warning_amber, color: Colors.orange, size: 20),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: MyText(
-                      text: 'This event may contain mature content',
-                      size: 12,
-                      color: Colors.orange.shade700,
-                      weight: FontWeight.w500,
-                    ),
-                  ),
-                ],
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.orange.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.orange.withOpacity(0.3)),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.warning_amber, color: Colors.orange, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: MyText(
+                text: 'This event may contain mature content',
+                size: 12,
+                color: Colors.orange.shade700,
+                weight: FontWeight.w500,
               ),
             ),
-        ],
+          ],
+        ),
       );
     });
   }
@@ -377,8 +406,19 @@ class SearchDetails extends GetView<SearchDetailsController> {
   }
 
   Widget _buildSendQuoteButton() {
-    return Padding(
+    return Container(
       padding: AppSizes.DEFAULT,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.2),
+            spreadRadius: 1,
+            blurRadius: 4,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
       child: MyButton(
         buttonText: 'Send Quote',
         onTap: controller.navigateToSendQuote,
