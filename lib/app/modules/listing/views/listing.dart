@@ -1,3 +1,5 @@
+// modules/listing/views/listing.dart
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:photo_bug/app/core/constants/app_colors.dart';
@@ -15,7 +17,7 @@ class Listing extends GetView<ListingController> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: simpleAppBar(title: 'My Listing'),
+      appBar: simpleAppBar(title: 'My Listings'),
       floatingActionButton: _buildFloatingActionButton(),
       body: _buildBody(),
     );
@@ -32,14 +34,22 @@ class Listing extends GetView<ListingController> {
 
   Widget _buildBody() {
     return Obx(() {
-      if (controller.isLoading.value) {
+      // Loading state
+      if (controller.isLoading.value && controller.listings.isEmpty) {
         return const Center(child: CircularProgressIndicator());
       }
 
+      // Error state with retry
+      if (controller.errorMessage.isNotEmpty && controller.listings.isEmpty) {
+        return _buildErrorState();
+      }
+
+      // Empty state
       if (controller.listings.isEmpty) {
         return _buildEmptyState();
       }
 
+      // Success state with listings
       return RefreshIndicator(
         onRefresh: controller.refreshListings,
         child: ListView.builder(
@@ -47,11 +57,50 @@ class Listing extends GetView<ListingController> {
           itemCount: controller.listings.length,
           itemBuilder: (context, index) {
             final listing = controller.listings[index];
-            return _buildListingItem(listing);
+            return _buildListingItem(listing, index);
           },
         ),
       );
     });
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Image.asset(Assets.imagesFolder, height: 64, color: Colors.grey),
+          const SizedBox(height: 16),
+          MyText(
+            text: 'No Listings Found',
+            size: 18,
+            weight: FontWeight.w600,
+            color: Colors.grey,
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: MyText(
+              text: 'Add your first listing to get started',
+              size: 14,
+              color: Colors.grey,
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: controller.loadListings,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Refresh'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: kSecondaryColor,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildEmptyState() {
@@ -68,70 +117,209 @@ class Listing extends GetView<ListingController> {
             color: Colors.grey,
           ),
           const SizedBox(height: 8),
-          MyText(
-            text: 'Create your first listing by tapping the + button',
-            size: 14,
-            color: Colors.grey,
-            textAlign: TextAlign.center,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: MyText(
+              text: 'Create your first listing by tapping the + button',
+              size: 14,
+              color: Colors.grey,
+              textAlign: TextAlign.center,
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildListingItem(ListingItem listing) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 24),
-      child: GestureDetector(
-        onTap: () => controller.openListingDetails(listing),
-        child: Row(
-          children: [
-            CommonImageView(
-              url: listing.imageUrl,
-              height: 80,
-              width: 64,
-              radius: 8,
+  Widget _buildListingItem(ListingItem listing, int index) {
+    return Dismissible(
+      key: Key(listing.id),
+      direction: DismissDirection.endToStart,
+      confirmDismiss: (direction) async {
+        // Show confirmation dialog
+        return await Get.dialog<bool>(
+          AlertDialog(
+            title: const Text('Delete Listing'),
+            content: const Text(
+              'Are you sure you want to delete this listing?',
             ),
-            const SizedBox(width: 12),
+            actions: [
+              TextButton(
+                onPressed: () => Get.back(result: false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Get.back(result: true),
+                style: TextButton.styleFrom(foregroundColor: Colors.red),
+                child: const Text('Delete'),
+              ),
+            ],
+          ),
+        );
+      },
+      onDismissed: (direction) {
+        controller.deleteListing(listing.id);
+      },
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        decoration: BoxDecoration(
+          color: Colors.red,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Icon(Icons.delete, color: Colors.white, size: 30),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 24),
+        child: GestureDetector(
+          onTap: () => controller.openListingDetails(listing),
+          child: _buildListingCard(listing),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildListingCard(ListingItem listing) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          _buildListingImage(listing),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: _buildListingInfo(listing),
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.only(right: 12),
+            child: Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildListingImage(ListingItem listing) {
+    return ClipRRect(
+      borderRadius: const BorderRadius.only(
+        topLeft: Radius.circular(8),
+        bottomLeft: Radius.circular(8),
+      ),
+      child:
+          listing.imageUrl.isNotEmpty
+              ? CommonImageView(
+                url: listing.imageUrl,
+                height: 100,
+                width: 80,
+                fit: BoxFit.cover,
+              )
+              : Container(
+                height: 100,
+                width: 80,
+                color: Colors.grey[300],
+                child: const Icon(Icons.image, color: Colors.grey, size: 40),
+              ),
+    );
+  }
+
+  Widget _buildListingInfo(ListingItem listing) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  MyText(
-                    text: listing.date,
-                    size: 11,
-                    color: kQuaternaryColor,
-                    weight: FontWeight.w500,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  MyText(
-                    text: listing.title,
-                    weight: FontWeight.w500,
-                    paddingTop: 8,
-                    paddingBottom: 8,
-                  ),
-                  Row(
-                    children: [
-                      Image.asset(Assets.imagesLocation, height: 16),
-                      Expanded(
-                        child: MyText(
-                          text: listing.location,
-                          size: 11,
-                          color: kQuaternaryColor,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          paddingLeft: 4,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+              child: MyText(
+                text: listing.date,
+                size: 11,
+                color: kQuaternaryColor,
+                weight: FontWeight.w500,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: _getStatusColor(listing.status),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: MyText(
+                text: listing.status,
+                size: 10,
+                color: Colors.white,
+                weight: FontWeight.w500,
               ),
             ),
           ],
         ),
-      ),
+        MyText(
+          text: listing.title,
+          weight: FontWeight.w600,
+          size: 15,
+          paddingTop: 6,
+          paddingBottom: 6,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        Row(
+          children: [
+            Image.asset(Assets.imagesLocation, height: 14),
+            Expanded(
+              child: MyText(
+                text: listing.location,
+                size: 11,
+                color: kQuaternaryColor,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                paddingLeft: 4,
+              ),
+            ),
+          ],
+        ),
+        if (listing.totalPhotos > 0) ...[
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              const Icon(Icons.photo_library, size: 14, color: kSecondaryColor),
+              const SizedBox(width: 4),
+              MyText(
+                text: '${listing.totalPhotos} photos',
+                size: 11,
+                color: kSecondaryColor,
+                weight: FontWeight.w500,
+              ),
+            ],
+          ),
+        ],
+      ],
     );
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'active':
+      case 'scheduled':
+        return Colors.green;
+      case 'upcoming':
+        return Colors.orange;
+      case 'completed':
+        return Colors.blue;
+      default:
+        return Colors.grey;
+    }
   }
 }

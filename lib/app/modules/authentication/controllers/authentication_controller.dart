@@ -498,7 +498,8 @@ class AuthController extends GetxController {
         email: verificationEmail.value,
         password: passwordController.text,
         phone: '12344432',
-        profilePicture: 'https://via.placeholder.com/150',
+        profilePicture:
+            'https://cdn-icons-png.flaticon.com/512/6780/6780628.png',
         deviceToken: '',
         stripeAccountId: '',
         role: 'creator',

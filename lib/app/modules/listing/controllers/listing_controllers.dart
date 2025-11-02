@@ -1,109 +1,125 @@
+// modules/listing/controllers/listing_controller.dart
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:photo_bug/app/core/constants/app_images.dart';
 import 'package:photo_bug/app/models/listings_model/listings_model.dart';
-import 'package:photo_bug/app/modules/add_new_listing/view/add_new_listing.dart';
-import 'package:photo_bug/app/modules/listing/views/listing_details.dart';
-import 'package:photo_bug/app/modules/user_events/widgets/user_image_folder_details.dart';
-import 'package:photo_bug/app/modules/user_events/widgets/user_select_download.dart';
 import 'package:photo_bug/app/routes/app_pages.dart';
-import 'package:photo_bug/main.dart';
+import 'package:photo_bug/app/services/photo_service/listing_service.dart';
 
 class ListingController extends GetxController {
+  // Services
+  late final ListingService _listingService;
+
   // Observable variables
   final RxList<ListingItem> listings = <ListingItem>[].obs;
   final RxBool isLoading = false.obs;
   final RxBool isRefreshing = false.obs;
+  final RxString errorMessage = ''.obs;
 
   @override
   void onInit() {
     super.onInit();
+    _initializeService();
     loadListings();
   }
 
-  // Load listings from API
-  void loadListings() async {
-    isLoading.value = true;
+  /// Initialize the listing service
+  void _initializeService() {
     try {
-      // Simulate API call - replace with actual API call
-      await Future.delayed(const Duration(milliseconds: 500));
+      _listingService = ListingService.instance;
 
-      // Sample data - replace with actual API data
-      final sampleListings = [
-        ListingItem(
-          id: '1',
-          title: 'Den & Tina wedding event',
-          date: '27 Sep, 2024',
-          location: '385 Main Street, Suite 52, USA',
-          imageUrl: dummyImg, // Replace with actual image URL
-          status: 'Scheduled',
-          recipients: [dummyImg, dummyImg2, dummyImg, dummyImg2],
-          folders: [
-            ListingFolder(
-              id: 'folder_1',
-              name: 'Samuel Images',
-              date: '12/09/2024',
-              itemCount: 0,
-              ownerName: 'Samuel',
-            ),
-          ],
-        ),
-        ListingItem(
-          id: '2',
-          title: 'Corporate Event 2024',
-          date: '15 Oct, 2024',
-          location: '123 Business Ave, Downtown, USA',
-          imageUrl: dummyImg2, // Replace with actual image URL
-          status: 'Upcoming',
-          recipients: [dummyImg, dummyImg2, dummyImg, dummyImg2],
-          folders: [
-            ListingFolder(
-              id: 'folder_2',
-              name: 'Event Photos',
-              date: '15/10/2024',
-              itemCount: 25,
-              ownerName: 'Admin',
-            ),
-          ],
-        ),
-      ];
+      // Listen to service updates
+      _listingService.listingsStream.listen((updatedListings) {
+        listings.value = updatedListings;
+      });
 
-      listings.assignAll(sampleListings);
+      _listingService.loadingStream.listen((loading) {
+        isLoading.value = loading;
+      });
     } catch (e) {
-      Get.snackbar('Error', 'Failed to load listings');
+      print('❌ Error initializing ListingService: $e');
+      errorMessage.value = 'Failed to initialize service';
+    }
+  }
+
+  /// Load listings from API
+  Future<void> loadListings() async {
+    try {
+      isLoading.value = true;
+      errorMessage.value = '';
+
+      final response = await _listingService.getUserListings();
+
+      if (response.success && response.data != null) {
+        listings.assignAll(response.data!);
+        print('✅ Loaded ${response.data!.length} listings');
+
+        if (listings.isEmpty) {
+          errorMessage.value = 'No listings found';
+        }
+      } else {
+        errorMessage.value = response.error ?? 'Failed to load listings';
+        _showError(errorMessage.value);
+      }
+    } catch (e) {
+      print('❌ Error loading listings: $e');
+      errorMessage.value = 'Failed to load listings';
+      _showError('Failed to load listings: $e');
     } finally {
       isLoading.value = false;
     }
   }
 
-  // Refresh listings
+  /// Refresh listings with pull-to-refresh
   Future<void> refreshListings() async {
-    isRefreshing.value = true;
-    loadListings();
-    isRefreshing.value = false;
+    try {
+      isRefreshing.value = true;
+      errorMessage.value = '';
+
+      final response = await _listingService.getUserListings();
+
+      if (response.success && response.data != null) {
+        listings.assignAll(response.data!);
+        _showSuccess('Listings refreshed successfully');
+      } else {
+        _showError(response.error ?? 'Failed to refresh listings');
+      }
+    } catch (e) {
+      print('❌ Error refreshing listings: $e');
+      _showError('Failed to refresh listings');
+    } finally {
+      isRefreshing.value = false;
+    }
   }
 
-  // Navigate to listing details
+  /// Navigate to listing details
   void openListingDetails(ListingItem listing) {
+    if (listing.id.isEmpty) {
+      _showError('Invalid listing');
+      return;
+    }
+
     Get.toNamed(
       Routes.LISTING_DETAILS,
       arguments: {'listingId': listing.id, 'listing': listing},
     );
   }
 
-  // Navigate to add new listing
+  /// Navigate to add new listing
   void addNewListing() {
     Get.toNamed(Routes.ADD_NEW_LISTING);
   }
 
-  // Delete listing
-  void deleteListing(String listingId) async {
+  /// Delete listing with confirmation
+  Future<void> deleteListing(String listingId) async {
     try {
       // Show confirmation dialog
       final result = await Get.dialog<bool>(
         AlertDialog(
           title: const Text('Delete Listing'),
-          content: const Text('Are you sure you want to delete this listing?'),
+          content: const Text(
+            'Are you sure you want to delete this listing? This action cannot be undone.',
+          ),
           actions: [
             TextButton(
               onPressed: () => Get.back(result: false),
@@ -111,6 +127,7 @@ class ListingController extends GetxController {
             ),
             TextButton(
               onPressed: () => Get.back(result: true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
               child: const Text('Delete'),
             ),
           ],
@@ -118,96 +135,225 @@ class ListingController extends GetxController {
       );
 
       if (result == true) {
-        // Remove from list
-        listings.removeWhere((listing) => listing.id == listingId);
+        isLoading.value = true;
 
-        // Here you would make actual API call
-        // await listingService.deleteListing(listingId);
+        final response = await _listingService.deleteListing(listingId);
 
-        Get.snackbar('Success', 'Listing deleted successfully');
+        if (response.success) {
+          listings.removeWhere((listing) => listing.id == listingId);
+          _showSuccess('Listing deleted successfully');
+        } else {
+          _showError(response.error ?? 'Failed to delete listing');
+        }
       }
     } catch (e) {
-      Get.snackbar('Error', 'Failed to delete listing');
-    }
-  }
-}
-
-// controllers/listing_details_controller.dart
-class ListingDetailsController extends GetxController {
-  // Observable variables
-  final Rx<ListingItem?> listing = Rx<ListingItem?>(null);
-  final RxBool isLoading = false.obs;
-  final RxString listingId = ''.obs;
-
-  @override
-  void onInit() {
-    super.onInit();
-    // Get listing data from arguments
-    final arguments = Get.arguments;
-    if (arguments != null) {
-      listingId.value = arguments['listingId'] ?? '';
-      listing.value = arguments['listing'];
-    }
-
-    if (listing.value == null && listingId.value.isNotEmpty) {
-      loadListingDetails();
-    }
-  }
-
-  // Load listing details if not passed as argument
-  void loadListingDetails() async {
-    isLoading.value = true;
-    try {
-      // Simulate API call - replace with actual API call
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      // Here you would fetch listing details from API
-      // final response = await listingService.getListingDetails(listingId.value);
-      // listing.value = ListingItem.fromJson(response);
-    } catch (e) {
-      Get.snackbar('Error', 'Failed to load listing details');
+      print('❌ Error deleting listing: $e');
+      _showError('Failed to delete listing');
     } finally {
       isLoading.value = false;
     }
   }
 
-  // Share listing
-  void shareListing() {
-    if (listing.value != null) {
-      // Implement share functionality
-      Get.snackbar('Share', 'Listing shared successfully');
-    }
-  }
+  /// Check if there are any listings
+  bool get hasListings => listings.isNotEmpty;
 
-  // Navigate to user image folder details
-  void openUserImageFolderDetails(ListingFolder folder) {
-    Get.to(
-      () => const UserImageFolderDetails(),
-      arguments: {
-        'folderId': folder.id,
-        'folder': folder,
-        'listingId': listingId.value,
-      },
+  /// Get listings count
+  int get listingsCount => listings.length;
+
+  /// Show success message
+  void _showSuccess(String message) {
+    Get.snackbar(
+      'Success',
+      message,
+      snackPosition: SnackPosition.BOTTOM,
+      backgroundColor: Colors.green,
+      colorText: Colors.white,
+      duration: const Duration(seconds: 2),
+      margin: const EdgeInsets.all(16),
     );
   }
 
-  // Navigate to bulk download
-  void downloadInBulk() {
-    if (listing.value != null) {
-      Get.to(
-        () => UserSelectDownload(),
-        arguments: {'listingId': listing.value!.id, 'listing': listing.value},
-      );
+  /// Show error message
+  void _showError(String message) {
+    Get.snackbar(
+      'Error',
+      message,
+      snackPosition: SnackPosition.BOTTOM,
+      backgroundColor: Colors.red,
+      colorText: Colors.white,
+      duration: const Duration(seconds: 3),
+      margin: const EdgeInsets.all(16),
+    );
+  }
+
+  @override
+  void onClose() {
+    // Clean up if needed
+    super.onClose();
+  }
+}
+
+// ==================== LISTING DETAILS CONTROLLER ====================
+
+class ListingDetailsController extends GetxController {
+  // Services
+  late final ListingService _listingService;
+
+  // Observable variables
+  final Rx<ListingItem?> listing = Rx<ListingItem?>(null);
+  final RxBool isLoading = false.obs;
+  final RxString listingId = ''.obs;
+  final RxString errorMessage = ''.obs;
+
+  @override
+  void onInit() {
+    super.onInit();
+    _initializeService();
+    _loadArguments();
+  }
+
+  /// Initialize the listing service
+  void _initializeService() {
+    try {
+      _listingService = ListingService.instance;
+    } catch (e) {
+      print('❌ Error initializing ListingService: $e');
+      errorMessage.value = 'Failed to initialize service';
     }
   }
 
-  // Get recipients count
+  /// Load arguments passed from previous screen
+  void _loadArguments() {
+    final arguments = Get.arguments;
+
+    if (arguments != null) {
+      listingId.value = arguments['listingId'] ?? '';
+      listing.value = arguments['listing'];
+    }
+
+    // If listing not passed, fetch it from API
+    if (listing.value == null && listingId.value.isNotEmpty) {
+      loadListingDetails();
+    } else if (listing.value == null) {
+      errorMessage.value = 'No listing data available';
+    }
+  }
+
+  /// Load listing details from API
+  Future<void> loadListingDetails() async {
+    if (listingId.value.isEmpty) {
+      errorMessage.value = 'Invalid listing ID';
+      return;
+    }
+
+    try {
+      isLoading.value = true;
+      errorMessage.value = '';
+
+      print('🔄 Loading listing details for ID: ${listingId.value}');
+
+      final response = await _listingService.getListingById(listingId.value);
+
+      if (response.success && response.data != null) {
+        listing.value = response.data;
+        print('✅ Listing details loaded: ${response.data!.title}');
+      } else {
+        errorMessage.value = response.error ?? 'Failed to load listing details';
+        _showError(errorMessage.value);
+      }
+    } catch (e) {
+      print('❌ Error loading listing details: $e');
+      errorMessage.value = 'Failed to load listing details';
+      _showError('Failed to load listing details: $e');
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  /// Share listing
+  void shareListing() {
+    if (listing.value == null) {
+      _showError('No listing to share');
+      return;
+    }
+
+    // TODO: Implement actual sharing functionality
+    // For now, just show a success message
+    _showSuccess('Sharing functionality coming soon!');
+  }
+
+  /// Navigate to user image folder details
+  void openUserImageFolderDetails(ListingFolder folder) {
+    if (folder.id.isEmpty) {
+      _showError('Invalid folder');
+      return;
+    }
+
+    // TODO: Implement navigation to folder details
+    Get.snackbar(
+      'Folder',
+      'Opening ${folder.name}',
+      snackPosition: SnackPosition.BOTTOM,
+    );
+  }
+
+  /// Navigate to bulk download
+  void downloadInBulk() {
+    if (listing.value == null) {
+      _showError('No listing available');
+      return;
+    }
+
+    // TODO: Implement navigation to bulk download
+    _showSuccess('Bulk download feature coming soon!');
+  }
+
+  /// Get recipients count
   int get recipientsCount => listing.value?.recipients.length ?? 0;
 
-  // Get recipients images (limited to display)
+  /// Get recipients images (limited to display)
   List<String> get recipientsImages {
     if (listing.value == null) return [];
+
     final images = listing.value!.recipients;
     return images.length > 5 ? images.take(5).toList() : images;
+  }
+
+  /// Check if listing has data
+  bool get hasListing => listing.value != null;
+
+  /// Get listing title
+  String get listingTitle => listing.value?.title ?? 'Listing Details';
+
+  /// Show success message
+  void _showSuccess(String message) {
+    Get.snackbar(
+      'Success',
+      message,
+      snackPosition: SnackPosition.BOTTOM,
+      backgroundColor: Colors.green,
+      colorText: Colors.white,
+      duration: const Duration(seconds: 2),
+      margin: const EdgeInsets.all(16),
+    );
+  }
+
+  /// Show error message
+  void _showError(String message) {
+    Get.snackbar(
+      'Error',
+      message,
+      snackPosition: SnackPosition.BOTTOM,
+      backgroundColor: Colors.red,
+      colorText: Colors.white,
+      duration: const Duration(seconds: 3),
+      margin: const EdgeInsets.all(16),
+    );
+  }
+
+  @override
+  void onClose() {
+    // Clean up if needed
+    super.onClose();
   }
 }

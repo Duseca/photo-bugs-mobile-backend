@@ -108,13 +108,13 @@ class Settings extends StatelessWidget {
               Get.to(() => PaymentMethod());
             },
           ),
-          _ProfileTile(
-            icon: Assets.imagesUser,
-            title: 'User ID',
-            onTap: () {
-              Get.to(() => UserId());
-            },
-          ),
+          // _ProfileTile(
+          //   icon: Assets.imagesUser,
+          //   title: 'User ID',
+          //   onTap: () {
+          //     Get.to(() => UserId());
+          //   },
+          // ),
           _ProfileTile(
             icon: Assets.imagesHistory,
             title: 'Transaction History',

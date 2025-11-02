@@ -5,9 +5,11 @@ import 'package:photo_bug/app/services/chat_service/chat_service.dart';
 import 'package:photo_bug/app/services/event_service.dart/event_service.dart';
 import 'package:photo_bug/app/services/folder_service/folder_service.dart';
 import 'package:photo_bug/app/services/notification_service/notification_service.dart';
+import 'package:photo_bug/app/services/photo_service/listing_service.dart';
 import 'package:photo_bug/app/services/photo_service/photo_service.dart';
 import 'package:photo_bug/app/services/review_service/portfolio_service.dart';
 import 'package:photo_bug/app/services/review_service/review_service.dart';
+import 'package:photo_bug/app/services/transaction_service/transaction_service.dart';
 // Import other services as you create them
 // import 'package:photo_bug/app/data/services/notification/notification_service.dart';
 // import 'package:photo_bug/app/data/services/chat/chat_service.dart';
@@ -40,9 +42,13 @@ Future<void> _initApiServices() async {
 
   await Get.putAsync(() => FolderService().init(), permanent: true);
 
+  await Get.putAsync(() => ListingService().init(), permanent: true);
+
   await Get.putAsync(() => PortfolioService().init(), permanent: true);
 
   await Get.putAsync(() => ChatService().init(), permanent: true);
+
+  await Get.putAsync(() => TransactionService().init(), permanent: true);
 
   await Get.putAsync(() => NotificationService().init(), permanent: true);
 }
