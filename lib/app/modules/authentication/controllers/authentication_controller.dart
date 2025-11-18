@@ -11,7 +11,11 @@ import 'package:photo_bug/app/data/models/auth_models.dart' as auth_models;
 class AuthController extends GetxController {
   final AuthService _authService = AuthService.instance;
   final isSocialLoading = false.obs;
+
+  // ✅ NEW: Track login method
+  final RxBool _isGoogleUser = false.obs;
   final RxBool _hasPromptedForDrive = false.obs;
+
   // Observable variables
   final isLoading = false.obs;
   final rememberMe = false.obs;
@@ -92,17 +96,82 @@ class AuthController extends GetxController {
   void _listenToAuthState() {
     _authService.authStateStream.listen((bool authenticated) {
       if (authenticated) {
-        // ✅ CHANGE: Check profile completion first
         Future.delayed(const Duration(milliseconds: 300), () {
           if (_authService.needsProfileCompletion) {
             Get.offAndToNamed(Routes.COMPLETE_PROFILE);
           } else {
             Get.offAllNamed(Routes.BOTTOM_NAV_BAR);
-            checkAndPromptGoogleDrive();
+
+            // ✅ FIXED: Only check for email/password users
+            _checkAndPromptGoogleDriveIfNeeded();
           }
         });
       }
     });
+  }
+
+  // ✅ NEW METHOD: Smart Google Drive prompt logic
+  void _checkAndPromptGoogleDriveIfNeeded() {
+    // Don't prompt if already prompted in this session
+    if (_hasPromptedForDrive.value) {
+      print('🔵 Already prompted for Google Drive in this session');
+      return;
+    }
+
+    // ✅ Check 1: Is this a Google user?
+    final isGoogleUser = _isUserLoggedInViaGoogle();
+
+    if (isGoogleUser) {
+      print('✅ Google user detected - skipping Drive prompt');
+      _hasPromptedForDrive.value = true; // Mark as handled
+      return;
+    }
+
+    // ✅ Check 2: Does user already have valid Google tokens?
+    if (_authService.isGoogleDriveConnected) {
+      print('✅ Google Drive already connected - skipping prompt');
+      _hasPromptedForDrive.value = true;
+      return;
+    }
+
+    // ✅ Check 3: Email/password user without Google tokens
+    if (_authService.needsGoogleDriveAuth) {
+      print('📢 Email/password user needs Google Drive authorization');
+
+      // Delay to ensure UI is ready
+      Future.delayed(const Duration(milliseconds: 800), () {
+        if (!_hasPromptedForDrive.value) {
+          showGoogleDriveAuthDialog();
+          _hasPromptedForDrive.value = true;
+        }
+      });
+    }
+  }
+
+  /// ✅ NEW: Detect if user logged in via Google
+  bool _isUserLoggedInViaGoogle() {
+    final user = _authService.currentUser;
+
+    if (user == null) return false;
+
+    // Check 1: Has socialProvider field
+    // Note: You might need to add this field to your User model if not present
+    // For now, we check if googleTokens exist and are valid
+
+    // Check 2: Has valid Google tokens (most reliable)
+    final hasValidGoogleTokens =
+        user.googleTokens != null && user.googleTokens!.isValid;
+
+    // Check 3: Controller flag (set during Google sign-in)
+    final usedGoogleSignIn = _isGoogleUser.value;
+
+    final isGoogle = hasValidGoogleTokens || usedGoogleSignIn;
+
+    print(
+      '🔍 Google user check: hasTokens=$hasValidGoogleTokens, flag=$usedGoogleSignIn, result=$isGoogle',
+    );
+
+    return isGoogle;
   }
 
   // Toggle functions
@@ -216,20 +285,30 @@ class AuthController extends GetxController {
     try {
       isSocialLoading.value = true;
 
+      // ✅ MARK: User is signing in with Google
+      _isGoogleUser.value = true;
+
       final response = await _authService.signInWithGoogle();
 
       if (response.success) {
         _showSuccessSnackbar('✅ Google sign-in successful!');
+
+        // ✅ Google users already have tokens - no prompt needed
+        print('✅ Google sign-in completed - tokens should be set');
       } else {
+        // ✅ Reset flag if sign-in failed
+        _isGoogleUser.value = false;
+
         print('Google sign-in error: ${response.error}');
-        // ✅ ADD: Check if user cancelled
+
         if (response.error?.contains('cancel') == true) {
-          _showInfoSnackbar('Sign-in cancelled'); // Friendly message
+          _showInfoSnackbar('Sign-in cancelled');
         } else {
           _showErrorSnackbar(response.error ?? 'Google sign-in failed');
         }
       }
     } catch (e) {
+      _isGoogleUser.value = false;
       _showErrorSnackbar('Google sign-in failed: $e');
       print('Google sign-in error in controller: $e');
     } finally {
@@ -258,7 +337,6 @@ class AuthController extends GetxController {
 
       if (response.success) {
         _showSuccessSnackbar('✅ Facebook sign-in successful!');
-        // Navigation handled by auth state listener
       } else {
         _showErrorSnackbar(response.error ?? 'Facebook sign-in failed');
       }
@@ -271,15 +349,6 @@ class AuthController extends GetxController {
   }
 
   // ==================== GOOGLE DRIVE AUTHORIZATION ====================
-
-  /// Check if Google Drive authorization is needed and prompt
-  Future<void> checkAndPromptGoogleDrive() async {
-    // Only prompt for email/password users who don't have tokens
-    if (_authService.needsGoogleDriveAuth) {
-      await Future.delayed(const Duration(microseconds: 500));
-      showGoogleDriveAuthDialog();
-    }
-  }
 
   /// Show Google Drive authorization dialog
   void showGoogleDriveAuthDialog() {
@@ -303,7 +372,6 @@ class AuthController extends GetxController {
               Get.back();
               authorizeGoogleDrive();
             },
-
             child: const Text('Connect Now'),
           ),
         ],
@@ -436,6 +504,9 @@ class AuthController extends GetxController {
     try {
       isLoading.value = true;
 
+      // ✅ MARK: Email/password registration
+      _isGoogleUser.value = false;
+
       verificationEmail.value = emailController.text.trim();
 
       final response = await _authService.sendVerificationEmail(
@@ -490,6 +561,9 @@ class AuthController extends GetxController {
   Future<void> completeRegistration() async {
     try {
       isLoading.value = true;
+
+      // ✅ MARK: Email/password registration
+      _isGoogleUser.value = false;
 
       final request = auth_models.RegisterRequest(
         name:
@@ -551,6 +625,9 @@ class AuthController extends GetxController {
 
     try {
       isLoading.value = true;
+
+      // ✅ MARK: Email/password login
+      _isGoogleUser.value = false;
 
       final request = auth_models.LoginRequest(
         email: emailController.text.trim(),
@@ -733,6 +810,10 @@ class AuthController extends GetxController {
     isFromSocialAuth.value = false;
     socialUserInfo.value = null;
 
+    // ✅ Reset Google user flags
+    _isGoogleUser.value = false;
+    _hasPromptedForDrive.value = false;
+
     otpTimer.value = 58;
     canResendOTP.value = false;
   }
@@ -857,5 +938,9 @@ class AuthController extends GetxController {
     clearCompleteProfileForm();
     clearEmailVerification();
     selectedInterests.clear();
+
+    // ✅ Reset Google flags
+    _isGoogleUser.value = false;
+    _hasPromptedForDrive.value = false;
   }
 }

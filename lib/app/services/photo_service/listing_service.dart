@@ -5,7 +5,7 @@ import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
 import 'package:photo_bug/app/data/models/api_response.dart';
 import 'package:photo_bug/app/data/configs/api_configs.dart';
-import 'package:photo_bug/app/models/listings_model/listings_model.dart';
+import 'package:photo_bug/app/data/models/photo_model.dart';
 import '../auth/auth_service.dart';
 
 class ListingService extends GetxService {
@@ -14,17 +14,17 @@ class ListingService extends GetxService {
   late final AuthService _authService;
 
   // Reactive variables
-  final RxList<ListingItem> _userListings = <ListingItem>[].obs;
+  final RxList<Photo> _userListings = <Photo>[].obs;
   final RxBool _isLoading = false.obs;
   final RxBool _isRefreshing = false.obs;
 
   // Getters
-  List<ListingItem> get userListings => _userListings;
+  List<Photo> get userListings => _userListings;
   bool get isLoading => _isLoading.value;
   bool get isRefreshing => _isRefreshing.value;
 
   // Streams
-  Stream<List<ListingItem>> get listingsStream => _userListings.stream;
+  Stream<List<Photo>> get listingsStream => _userListings.stream;
   Stream<bool> get loadingStream => _isLoading.stream;
 
   Future<ListingService> init() async {
@@ -58,43 +58,70 @@ class ListingService extends GetxService {
     });
   }
 
-  // ==================== GET USER LISTINGS ====================
+  // ==================== GET USER LISTINGS (PHOTOS) ====================
 
-  /// Get user's photo bundles (listings)
-  /// Uses: GET {{baseUrl}}/api/photo-bundles/{{userId}}/user-photos
-  Future<ApiResponse<List<ListingItem>>> getUserListings() async {
+  /// Get user's photos as listings
+  /// Uses: GET {{baseUrl}}/api/photos
+  Future<ApiResponse<List<Photo>>> getUserListings() async {
     try {
       _isLoading.value = true;
 
-      // Get current user ID
-      final userId = _authService.currentUser?.id;
-      if (userId == null) {
-        return ApiResponse<List<ListingItem>>(
-          success: false,
-          error: 'User not authenticated',
-        );
-      }
+      print('🔄 Fetching user photos (listings)');
 
-      print('🔄 Fetching listings for user: $userId');
-
-      final response = await makeApiRequest<List<ListingItem>>(
+      final response = await makeApiRequest<List<Photo>>(
         method: 'GET',
-        endpoint: ApiConfig.endpoints.getUserPhotos(userId),
+        endpoint: ApiConfig.endpoints.photos,
         fromJson: (json) {
-          if (json is List) {
-            return json.map((item) => ListingItem.fromJson(item)).toList();
-          } else if (json is Map && json['data'] is List) {
-            return (json['data'] as List)
-                .map((item) => ListingItem.fromJson(item))
-                .toList();
+          print('📦 Raw response type: ${json.runtimeType}');
+
+          List<dynamic> photosList;
+          int total = 0;
+
+          if (json is Map) {
+            print('📦 Response is Map with keys: ${json.keys}');
+
+            if (json.containsKey('totalPhotos')) {
+              total = json['totalPhotos'] as int? ?? 0;
+              print('✅ Total photos from API: $total');
+            }
+
+            if (json.containsKey('data')) {
+              photosList = json['data'] as List;
+            } else {
+              photosList = [];
+            }
+          } else if (json is List) {
+            photosList = json;
+            total = photosList.length;
+          } else {
+            photosList = [];
           }
-          return <ListingItem>[];
+
+          print('✅ Listings loaded: ${photosList.length} photos');
+
+          final photos = <Photo>[];
+          for (var i = 0; i < photosList.length; i++) {
+            try {
+              final photo = Photo.fromJson(
+                photosList[i] as Map<String, dynamic>,
+              );
+              photos.add(photo);
+              print(
+                '✅ Parsed photo ${i + 1}/${photosList.length}: ${photo.id}',
+              );
+            } catch (e) {
+              print('⚠️ Error parsing photo at index $i: $e');
+            }
+          }
+
+          print('✅ Successfully loaded ${photos.length} listings');
+          return photos;
         },
       );
 
       if (response.success && response.data != null) {
         _userListings.value = response.data!;
-        print('✅ Listings loaded: ${response.data!.length} items');
+        print('✅ User photos updated: ${_userListings.length} items');
       } else {
         print('❌ Failed to load listings: ${response.error}');
       }
@@ -102,7 +129,7 @@ class ListingService extends GetxService {
       return response;
     } catch (e) {
       print('❌ Error fetching listings: $e');
-      return ApiResponse<List<ListingItem>>(
+      return ApiResponse<List<Photo>>(
         success: false,
         error: 'Failed to get listings: $e',
       );
@@ -113,129 +140,184 @@ class ListingService extends GetxService {
 
   // ==================== GET LISTING BY ID ====================
 
-  /// Get specific photo bundle by ID
-  /// Uses: GET {{baseUrl}}/api/photo-bundles/{{id}}
-  Future<ApiResponse<ListingItem>> getListingById(String listingId) async {
+  /// Get specific photo by ID
+  /// Uses: GET {{baseUrl}}/api/photos/{{id}}
+  Future<ApiResponse<Photo>> getListingById(String photoId) async {
     try {
-      print('🔄 Fetching listing details: $listingId');
+      print('🔄 Fetching photo details: $photoId');
 
-      final response = await makeApiRequest<ListingItem>(
+      final response = await makeApiRequest<Photo>(
         method: 'GET',
-        endpoint: ApiConfig.endpoints.getBundleById(listingId),
-        fromJson: (json) => ListingItem.fromJson(json),
+        endpoint: ApiConfig.endpoints.photoById(photoId),
+        fromJson: (json) => Photo.fromJson(json),
       );
 
       if (response.success && response.data != null) {
-        print('✅ Listing details loaded: ${response.data!.title}');
+        print('✅ Photo details loaded');
       } else {
-        print('❌ Failed to load listing details: ${response.error}');
+        print('❌ Failed to load photo details: ${response.error}');
       }
 
       return response;
     } catch (e) {
-      print('❌ Error fetching listing details: $e');
-      return ApiResponse<ListingItem>(
+      print('❌ Error fetching photo details: $e');
+      return ApiResponse<Photo>(
         success: false,
-        error: 'Failed to get listing details: $e',
+        error: 'Failed to get photo details: $e',
       );
     }
   }
 
-  // ==================== CREATE LISTING ====================
+  // ==================== CREATE LISTING (UPLOAD PHOTO) ====================
 
-  /// Create a new photo bundle
-  /// Uses: POST {{baseUrl}}/api/photo-bundles
-  Future<ApiResponse<ListingItem>> createListing(
-    CreateListingRequest request,
-  ) async {
+  /// Create a new listing (upload photo)
+  /// Uses: POST {{baseUrl}}/api/photos
+  Future<ApiResponse<Photo>> createListing(UploadPhotoRequest request) async {
     try {
-      print('🔄 Creating new listing: ${request.name}');
+      print('🔄 Creating new listing (uploading photo)');
 
-      final response = await makeApiRequest<ListingItem>(
+      final response = await makeApiRequest<Photo>(
         method: 'POST',
-        endpoint: ApiConfig.endpoints.createPhotoBundle,
+        endpoint: ApiConfig.endpoints.uploadPhoto,
         data: request.toJson(),
-        fromJson: (json) => ListingItem.fromJson(json),
+        fromJson: (json) => Photo.fromJson(json),
       );
 
       if (response.success && response.data != null) {
         _userListings.insert(0, response.data!);
-        print('✅ Listing created successfully');
+        print('✅ Photo uploaded successfully');
       } else {
-        print('❌ Failed to create listing: ${response.error}');
+        print('❌ Failed to upload photo: ${response.error}');
       }
 
       return response;
     } catch (e) {
-      print('❌ Error creating listing: $e');
-      return ApiResponse<ListingItem>(
+      print('❌ Error uploading photo: $e');
+      return ApiResponse<Photo>(
         success: false,
-        error: 'Failed to create listing: $e',
+        error: 'Failed to upload photo: $e',
       );
     }
   }
 
   // ==================== UPDATE LISTING ====================
 
-  /// Update photo bundle
-  /// Uses: PUT {{baseUrl}}/api/photo-bundles/{{id}}
-  Future<ApiResponse<ListingItem>> updateListing(
-    String listingId,
-    UpdateListingRequest request,
+  /// Update photo listing
+  /// Uses: PUT {{baseUrl}}/api/photos/{{id}}
+  Future<ApiResponse<Photo>> updateListing(
+    String photoId,
+    UpdatePhotoRequest request,
   ) async {
     try {
-      print('🔄 Updating listing: $listingId');
+      print('🔄 Updating listing: $photoId');
 
-      final response = await makeApiRequest<ListingItem>(
+      final response = await makeApiRequest<Photo>(
         method: 'PUT',
-        endpoint: ApiConfig.endpoints.updatePhotoBundle(listingId),
+        endpoint: ApiConfig.endpoints.updatePhoto(photoId),
         data: request.toJson(),
-        fromJson: (json) => ListingItem.fromJson(json),
+        fromJson: (json) => Photo.fromJson(json),
       );
 
       if (response.success && response.data != null) {
         _updateListingInCache(response.data!);
-        print('✅ Listing updated successfully');
+        print('✅ Photo updated successfully');
       } else {
-        print('❌ Failed to update listing: ${response.error}');
+        print('❌ Failed to update photo: ${response.error}');
       }
 
       return response;
     } catch (e) {
-      print('❌ Error updating listing: $e');
-      return ApiResponse<ListingItem>(
+      print('❌ Error updating photo: $e');
+      return ApiResponse<Photo>(
         success: false,
-        error: 'Failed to update listing: $e',
+        error: 'Failed to update photo: $e',
       );
     }
   }
 
   // ==================== DELETE LISTING ====================
 
-  /// Delete photo bundle
-  /// Uses: DELETE {{baseUrl}}/api/photo-bundles/{{id}}
-  Future<ApiResponse<void>> deleteListing(String listingId) async {
+  /// Delete photo listing
+  /// Uses: DELETE {{baseUrl}}/api/photos/{{id}}
+  Future<ApiResponse<void>> deleteListing(String photoId) async {
     try {
-      print('🔄 Deleting listing: $listingId');
+      print('🔄 Deleting listing: $photoId');
 
       final response = await makeApiRequest<void>(
         method: 'DELETE',
-        endpoint: ApiConfig.endpoints.deletePhotoBundle(listingId),
+        endpoint: ApiConfig.endpoints.deletePhoto(photoId),
       );
 
       if (response.success) {
-        _removeListingFromCache(listingId);
-        print('✅ Listing deleted successfully');
+        _removeListingFromCache(photoId);
+        print('✅ Photo deleted successfully');
       } else {
-        print('❌ Failed to delete listing: ${response.error}');
+        print('❌ Failed to delete photo: ${response.error}');
       }
 
       return response;
     } catch (e) {
-      print('❌ Error deleting listing: $e');
+      print('❌ Error deleting photo: $e');
       return ApiResponse<void>(
         success: false,
-        error: 'Failed to delete listing: $e',
+        error: 'Failed to delete photo: $e',
+      );
+    }
+  }
+
+  // ==================== SEARCH LISTINGS ====================
+
+  /// Search photos
+  /// Uses: GET {{baseUrl}}/api/photos/search-photos
+  Future<ApiResponse<List<Photo>>> searchListings({
+    String? creatorId,
+    String? eventId,
+    String? folderId,
+    double? minPrice,
+    double? maxPrice,
+  }) async {
+    try {
+      print('🔄 Searching photos');
+
+      // Build query parameters
+      final queryParams = <String, String>{};
+      if (creatorId != null) queryParams['created_by'] = creatorId;
+      if (eventId != null) queryParams['event_id'] = eventId;
+      if (folderId != null) queryParams['folder_id'] = folderId;
+      if (minPrice != null) queryParams['min_price'] = minPrice.toString();
+      if (maxPrice != null) queryParams['max_price'] = maxPrice.toString();
+
+      final queryString = queryParams.entries
+          .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
+          .join('&');
+
+      final endpoint = '${ApiConfig.endpoints.searchPhotos}?$queryString';
+
+      final response = await makeApiRequest<List<Photo>>(
+        method: 'GET',
+        endpoint: endpoint,
+        fromJson: (json) {
+          if (json is List) {
+            return json.map((item) => Photo.fromJson(item)).toList();
+          } else if (json is Map && json['data'] is List) {
+            return (json['data'] as List)
+                .map((item) => Photo.fromJson(item))
+                .toList();
+          }
+          return <Photo>[];
+        },
+      );
+
+      if (response.success) {
+        print('✅ Search completed: ${response.data?.length ?? 0} results');
+      }
+
+      return response;
+    } catch (e) {
+      print('❌ Error searching photos: $e');
+      return ApiResponse<List<Photo>>(
+        success: false,
+        error: 'Failed to search photos: $e',
       );
     }
   }
@@ -255,22 +337,28 @@ class ListingService extends GetxService {
   }
 
   /// Update listing in cache
-  void _updateListingInCache(ListingItem updatedListing) {
-    final index = _userListings.indexWhere((l) => l.id == updatedListing.id);
+  void _updateListingInCache(Photo updatedPhoto) {
+    final index = _userListings.indexWhere((p) => p.id == updatedPhoto.id);
     if (index != -1) {
-      _userListings[index] = updatedListing;
+      _userListings[index] = updatedPhoto;
     }
   }
 
   /// Remove listing from cache
-  void _removeListingFromCache(String listingId) {
-    _userListings.removeWhere((l) => l.id == listingId);
+  void _removeListingFromCache(String photoId) {
+    _userListings.removeWhere((p) => p.id == photoId);
   }
 
   /// Clear all listings
   void _clearListings() {
     _userListings.clear();
   }
+
+  /// Get listings count
+  int get listingsCount => _userListings.length;
+
+  /// Check if has listings
+  bool get hasListings => _userListings.isNotEmpty;
 
   // ==================== API REQUEST METHOD ====================
 
@@ -284,7 +372,6 @@ class ListingService extends GetxService {
     try {
       final url = '${ApiConfig.fullApiUrl}$endpoint';
       final token = _authService.authToken;
-      print('➡️ Making $token request to $url');
 
       if (token == null) {
         return ApiResponse<T>(success: false, error: 'Authentication required');
@@ -376,67 +463,5 @@ class ListingService extends GetxService {
   void onClose() {
     _clearListings();
     super.onClose();
-  }
-}
-
-// ==================== REQUEST MODELS ====================
-
-class CreateListingRequest {
-  final String name;
-  final double price;
-  final String? folderId;
-  final List<String> photoIds;
-  final List<String>? bonusPhotoIds;
-  final String? coverPhotoId;
-
-  CreateListingRequest({
-    required this.name,
-    required this.price,
-    this.folderId,
-    required this.photoIds,
-    this.bonusPhotoIds,
-    this.coverPhotoId,
-  });
-
-  Map<String, dynamic> toJson() {
-    return {
-      'name': name,
-      'price': price,
-      if (folderId != null) 'folder_id': folderId,
-      'photo_id': photoIds,
-      if (bonusPhotoIds != null) 'bonus_photo_id': bonusPhotoIds,
-      if (coverPhotoId != null) 'cover_photo_id': coverPhotoId,
-    };
-  }
-}
-
-class UpdateListingRequest {
-  final String? name;
-  final double? price;
-  final String? folderId;
-  final List<String>? photoIds;
-  final List<String>? bonusPhotoIds;
-  final String? coverPhotoId;
-
-  UpdateListingRequest({
-    this.name,
-    this.price,
-    this.folderId,
-    this.photoIds,
-    this.bonusPhotoIds,
-    this.coverPhotoId,
-  });
-
-  Map<String, dynamic> toJson() {
-    final map = <String, dynamic>{};
-
-    if (name != null) map['name'] = name;
-    if (price != null) map['price'] = price;
-    if (folderId != null) map['folder_id'] = folderId;
-    if (photoIds != null) map['photo_id'] = photoIds;
-    if (bonusPhotoIds != null) map['bonus_photo_id'] = bonusPhotoIds;
-    if (coverPhotoId != null) map['cover_photo_id'] = coverPhotoId;
-
-    return map;
   }
 }

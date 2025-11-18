@@ -8,6 +8,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:get/get.dart';
 import 'package:photo_bug/app/data/models/google_tokens_model.dart';
+import 'package:photo_bug/app/services/auth/token_dialog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:photo_bug/app/data/models/user_model.dart' as models;
 import 'package:photo_bug/app/data/models/api_response.dart';
@@ -653,7 +654,11 @@ class AuthService extends GetxService {
   }
 
   /// Google Sign-In - CORRECTED VERSION
+  /// Google Sign-In - CORRECTED VERSION WITH TOKEN DIALOG
   Future<ApiResponse<auth_models.AuthResponse>> signInWithGoogle() async {
+    String? accessToken;
+    String? serverAuthCode;
+
     try {
       _isLoading.value = true;
 
@@ -666,6 +671,7 @@ class AuthService extends GetxService {
           error: 'Google Sign-In initialization failed',
         );
       }
+
       final scopes = [
         'email',
         'profile',
@@ -702,7 +708,6 @@ class AuthService extends GetxService {
         );
       }
 
-      // ignore: unnecessary_null_comparison
       if (googleUser == null) {
         print('❌ Step 5: googleUser is null');
         return ApiResponse<auth_models.AuthResponse>(
@@ -713,31 +718,31 @@ class AuthService extends GetxService {
 
       print('🔵 Step 6: Getting authentication tokens');
       final GoogleSignInAuthentication googleAuth =
-          // ignore: await_only_futures
           await googleUser.authentication;
 
       final GoogleSignInServerAuthorization? serverAuth = await googleUser
           .authorizationClient
           .authorizeServer(scopes);
 
-      // ignore: unnecessary_null_comparison
+      // Store server auth code for dialog
       if (serverAuth != null && serverAuth.serverAuthCode != null) {
-        print('Server Auth Code: ${serverAuth.serverAuthCode}');
-        // Send this serverAuthCode to your backend server
+        serverAuthCode = serverAuth.serverAuthCode;
+        print(
+          '✅ Server Auth Code obtained: ${serverAuthCode!.substring(0, 20)}...',
+        );
       } else {
-        print('Server Auth Code not available.');
+        print('⚠️ Server Auth Code not available.');
       }
 
-      String? accessToken;
+      // Get access token
       try {
         final authorizedUser = await googleUser.authorizationClient
             .authorizeScopes(scopes);
 
         accessToken = authorizedUser.accessToken;
 
-        // ignore: unnecessary_null_comparison
         if (accessToken != null && accessToken.length > 50) {
-          print('✅ Access Token  $accessToken');
+          print('✅ Access Token obtained: ${accessToken.substring(0, 50)}...');
         }
       } catch (e) {
         print('❌ Failed to get access token: $e');
@@ -757,7 +762,6 @@ class AuthService extends GetxService {
         expiryDate:
             DateTime.now().add(const Duration(hours: 1)).millisecondsSinceEpoch,
       );
-      print('expiry date : ${tokens.expiryDate}');
 
       final socialUserInfo = auth_models.SocialUserInfo(
         id: googleUser.id,
@@ -767,7 +771,14 @@ class AuthService extends GetxService {
         profilePicture: googleUser.photoUrl,
       );
 
-      return await _handleSocialAuthWithTokens(socialUserInfo, tokens);
+      final response = await _handleSocialAuthWithTokens(
+        socialUserInfo,
+        tokens,
+      );
+
+      if (response.success) {}
+
+      return response;
     } catch (e) {
       print('❌ Top-level error: $e');
       return ApiResponse<auth_models.AuthResponse>(
@@ -864,7 +875,7 @@ class AuthService extends GetxService {
             '✅ Google tokens updated and user data refreshed for existing user',
           );
           print('✅ Token expiry: ${tokens.expiryDate}');
-          print('✅ Access token set: ${tokens.accessToken.isNotEmpty}');
+          print('✅ Access token set: ${tokens.accessToken!.isNotEmpty}');
         } else {
           print('⚠️ Failed to save Google tokens: ${tokenSaveResponse.error}');
         }

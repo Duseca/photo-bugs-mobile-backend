@@ -5,11 +5,12 @@ import 'package:get/get.dart';
 import 'package:photo_bug/app/core/constants/app_colors.dart';
 import 'package:photo_bug/app/core/constants/app_images.dart';
 import 'package:photo_bug/app/core/constants/app_sizes.dart';
-import 'package:photo_bug/app/models/listings_model/listings_model.dart';
+import 'package:photo_bug/app/data/models/photo_model.dart';
 import 'package:photo_bug/app/modules/listing/controllers/listing_controllers.dart';
 import 'package:photo_bug/app/core/common_widget/common_image_view_widget.dart';
 import 'package:photo_bug/app/core/common_widget/my_text_widget.dart';
 import 'package:photo_bug/app/core/common_widget/simple_app_bar_widget.dart';
+import 'package:intl/intl.dart';
 
 class Listing extends GetView<ListingController> {
   const Listing({super.key});
@@ -52,16 +53,99 @@ class Listing extends GetView<ListingController> {
       // Success state with listings
       return RefreshIndicator(
         onRefresh: controller.refreshListings,
-        child: ListView.builder(
-          padding: AppSizes.DEFAULT,
-          itemCount: controller.listings.length,
-          itemBuilder: (context, index) {
-            final listing = controller.listings[index];
-            return _buildListingItem(listing, index);
-          },
+        child: Column(
+          children: [
+            _buildListingsSummary(),
+            Expanded(
+              child: ListView.builder(
+                padding: AppSizes.DEFAULT,
+                itemCount: controller.listings.length,
+                itemBuilder: (context, index) {
+                  final photo = controller.listings[index];
+                  return _buildListingItem(photo, index);
+                },
+              ),
+            ),
+          ],
         ),
       );
     });
+  }
+
+  Widget _buildListingsSummary() {
+    return Obx(() {
+      if (controller.listings.isEmpty) return const SizedBox.shrink();
+
+      return Container(
+        margin: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [kSecondaryColor.withOpacity(0.1), Colors.white],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: kSecondaryColor.withOpacity(0.2)),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: _buildSummaryItem(
+                icon: Icons.photo_library,
+                label: 'Photos',
+                value: '${controller.listingsCount}',
+              ),
+            ),
+            Container(width: 1, height: 40, color: kInputBorderColor),
+            Expanded(
+              child: _buildSummaryItem(
+                icon: Icons.visibility,
+                label: 'Views',
+                value: _formatNumber(controller.totalViews),
+              ),
+            ),
+            Container(width: 1, height: 40, color: kInputBorderColor),
+            Expanded(
+              child: _buildSummaryItem(
+                icon: Icons.attach_money,
+                label: 'Value',
+                value: '\$${controller.totalPhotosValue.toStringAsFixed(0)}',
+              ),
+            ),
+          ],
+        ),
+      );
+    });
+  }
+
+  Widget _buildSummaryItem({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    return Column(
+      children: [
+        Icon(icon, color: kSecondaryColor, size: 24),
+        const SizedBox(height: 4),
+        MyText(
+          text: value,
+          size: 16,
+          weight: FontWeight.w700,
+          color: kSecondaryColor,
+        ),
+        MyText(text: label, size: 11, color: kQuaternaryColor),
+      ],
+    );
+  }
+
+  String _formatNumber(int number) {
+    if (number >= 1000000) {
+      return '${(number / 1000000).toStringAsFixed(1)}M';
+    } else if (number >= 1000) {
+      return '${(number / 1000).toStringAsFixed(1)}K';
+    }
+    return number.toString();
   }
 
   Widget _buildErrorState() {
@@ -72,7 +156,7 @@ class Listing extends GetView<ListingController> {
           Image.asset(Assets.imagesFolder, height: 64, color: Colors.grey),
           const SizedBox(height: 16),
           MyText(
-            text: 'No Listings Found',
+            text: 'No Photos Found',
             size: 18,
             weight: FontWeight.w600,
             color: Colors.grey,
@@ -81,7 +165,7 @@ class Listing extends GetView<ListingController> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32),
             child: MyText(
-              text: 'Add your first listing to get started',
+              text: 'Upload your first photo to get started',
               size: 14,
               color: Colors.grey,
               textAlign: TextAlign.center,
@@ -111,7 +195,7 @@ class Listing extends GetView<ListingController> {
           Image.asset(Assets.imagesFolder, height: 64, color: Colors.grey),
           const SizedBox(height: 16),
           MyText(
-            text: 'No listings yet',
+            text: 'No photos yet',
             size: 18,
             weight: FontWeight.w600,
             color: Colors.grey,
@@ -120,7 +204,7 @@ class Listing extends GetView<ListingController> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32),
             child: MyText(
-              text: 'Create your first listing by tapping the + button',
+              text: 'Upload your first photo by tapping the + button',
               size: 14,
               color: Colors.grey,
               textAlign: TextAlign.center,
@@ -131,18 +215,16 @@ class Listing extends GetView<ListingController> {
     );
   }
 
-  Widget _buildListingItem(ListingItem listing, int index) {
+  Widget _buildListingItem(Photo photo, int index) {
     return Dismissible(
-      key: Key(listing.id),
+      key: Key(photo.id ?? 'photo_$index'),
       direction: DismissDirection.endToStart,
       confirmDismiss: (direction) async {
         // Show confirmation dialog
         return await Get.dialog<bool>(
           AlertDialog(
-            title: const Text('Delete Listing'),
-            content: const Text(
-              'Are you sure you want to delete this listing?',
-            ),
+            title: const Text('Delete Photo'),
+            content: const Text('Are you sure you want to delete this photo?'),
             actions: [
               TextButton(
                 onPressed: () => Get.back(result: false),
@@ -158,7 +240,9 @@ class Listing extends GetView<ListingController> {
         );
       },
       onDismissed: (direction) {
-        controller.deleteListing(listing.id);
+        if (photo.id != null) {
+          controller.deleteListing(photo.id!);
+        }
       },
       background: Container(
         alignment: Alignment.centerRight,
@@ -172,14 +256,14 @@ class Listing extends GetView<ListingController> {
       child: Padding(
         padding: const EdgeInsets.only(bottom: 24),
         child: GestureDetector(
-          onTap: () => controller.openListingDetails(listing),
-          child: _buildListingCard(listing),
+          onTap: () => controller.openListingDetails(photo),
+          child: _buildListingCard(photo),
         ),
       ),
     );
   }
 
-  Widget _buildListingCard(ListingItem listing) {
+  Widget _buildListingCard(Photo photo) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -195,12 +279,12 @@ class Listing extends GetView<ListingController> {
       ),
       child: Row(
         children: [
-          _buildListingImage(listing),
+          _buildListingImage(photo),
           const SizedBox(width: 12),
           Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
-              child: _buildListingInfo(listing),
+              child: _buildListingInfo(photo),
             ),
           ),
           const Padding(
@@ -212,16 +296,18 @@ class Listing extends GetView<ListingController> {
     );
   }
 
-  Widget _buildListingImage(ListingItem listing) {
+  Widget _buildListingImage(Photo photo) {
+    final imageUrl = photo.thumbnailUrl ?? photo.watermarkedUrl ?? photo.url;
+
     return ClipRRect(
       borderRadius: const BorderRadius.only(
         topLeft: Radius.circular(8),
         bottomLeft: Radius.circular(8),
       ),
       child:
-          listing.imageUrl.isNotEmpty
+          imageUrl != null && imageUrl.isNotEmpty
               ? CommonImageView(
-                url: listing.imageUrl,
+                url: imageUrl,
                 height: 100,
                 width: 80,
                 fit: BoxFit.cover,
@@ -235,7 +321,7 @@ class Listing extends GetView<ListingController> {
     );
   }
 
-  Widget _buildListingInfo(ListingItem listing) {
+  Widget _buildListingInfo(Photo photo) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -243,7 +329,7 @@ class Listing extends GetView<ListingController> {
           children: [
             Expanded(
               child: MyText(
-                text: listing.date,
+                text: _formatDate(photo.createdAt),
                 size: 11,
                 color: kQuaternaryColor,
                 weight: FontWeight.w500,
@@ -254,11 +340,11 @@ class Listing extends GetView<ListingController> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(
-                color: _getStatusColor(listing.status),
+                color: _getStatusColor(photo.status),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: MyText(
-                text: listing.status,
+                text: _getStatusText(photo.status),
                 size: 10,
                 color: Colors.white,
                 weight: FontWeight.w500,
@@ -267,7 +353,7 @@ class Listing extends GetView<ListingController> {
           ],
         ),
         MyText(
-          text: listing.title,
+          text: _getPhotoTitle(photo),
           weight: FontWeight.w600,
           size: 15,
           paddingTop: 6,
@@ -275,49 +361,93 @@ class Listing extends GetView<ListingController> {
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),
-        Row(
-          children: [
-            Image.asset(Assets.imagesLocation, height: 14),
-            Expanded(
-              child: MyText(
-                text: listing.location,
-                size: 11,
-                color: kQuaternaryColor,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                paddingLeft: 4,
-              ),
-            ),
-          ],
-        ),
-        if (listing.totalPhotos > 0) ...[
-          const SizedBox(height: 4),
+        if (photo.metadata?.category != null) ...[
           Row(
             children: [
-              const Icon(Icons.photo_library, size: 14, color: kSecondaryColor),
+              const Icon(Icons.category, size: 14, color: kSecondaryColor),
+              Expanded(
+                child: MyText(
+                  text: photo.metadata!.category!,
+                  size: 11,
+                  color: kQuaternaryColor,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  paddingLeft: 4,
+                ),
+              ),
+            ],
+          ),
+        ],
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            if (photo.price != null && photo.price! > 0) ...[
+              const Icon(Icons.attach_money, size: 14, color: Colors.green),
+              MyText(
+                text: '\$${photo.price!.toStringAsFixed(2)}',
+                size: 11,
+                color: Colors.green,
+                weight: FontWeight.w600,
+              ),
+              const SizedBox(width: 12),
+            ],
+            if (photo.views != null && photo.views! > 0) ...[
+              const Icon(Icons.visibility, size: 14, color: kSecondaryColor),
               const SizedBox(width: 4),
               MyText(
-                text: '${listing.totalPhotos} photos',
+                text: '${photo.views} views',
                 size: 11,
                 color: kSecondaryColor,
                 weight: FontWeight.w500,
               ),
             ],
-          ),
-        ],
+          ],
+        ),
       ],
     );
   }
 
-  Color _getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'active':
-      case 'scheduled':
+  String _formatDate(DateTime? date) {
+    if (date == null) return 'Unknown date';
+    return DateFormat('MMM dd, yyyy').format(date);
+  }
+
+  String _getPhotoTitle(Photo photo) {
+    // Try to get title from metadata filename
+    if (photo.metadata?.fileName != null) {
+      return photo.metadata!.fileName!;
+    }
+    // Fallback to ID or "Untitled"
+    return photo.id != null
+        ? 'Photo ${photo.id!.substring(0, 8)}'
+        : 'Untitled Photo';
+  }
+
+  String _getStatusText(PhotoStatus status) {
+    switch (status) {
+      case PhotoStatus.active:
+        return 'Active';
+      case PhotoStatus.processing:
+        return 'Processing';
+      case PhotoStatus.archived:
+        return 'Archived';
+      case PhotoStatus.deleted:
+        return 'Deleted';
+      default:
+        return 'Unknown';
+    }
+  }
+
+  Color _getStatusColor(PhotoStatus status) {
+    switch (status) {
+      case PhotoStatus.active:
         return Colors.green;
-      case 'upcoming':
+      case PhotoStatus.processing:
         return Colors.orange;
-      case 'completed':
+      case PhotoStatus.archived:
         return Colors.blue;
+      case PhotoStatus.deleted:
+        return Colors.red;
       default:
         return Colors.grey;
     }

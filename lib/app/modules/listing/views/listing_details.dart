@@ -2,7 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:photo_bug/app/models/listings_model/listings_model.dart';
+import 'package:photo_bug/app/data/models/photo_model.dart';
 import 'package:photo_bug/app/modules/listing/controllers/listing_controllers.dart';
 import 'package:photo_bug/app/core/common_widget/my_button_widget.dart';
 import 'package:photo_bug/app/core/common_widget/simple_app_bar_widget.dart';
@@ -11,7 +11,7 @@ import 'package:photo_bug/app/core/constants/app_images.dart';
 import 'package:photo_bug/app/core/constants/app_sizes.dart';
 import 'package:photo_bug/app/core/common_widget/common_image_view_widget.dart';
 import 'package:photo_bug/app/core/common_widget/my_text_widget.dart';
-import 'package:flutter_image_stack/flutter_image_stack.dart';
+import 'package:intl/intl.dart';
 
 class ListingDetails extends GetView<ListingDetailsController> {
   const ListingDetails({super.key});
@@ -23,45 +23,99 @@ class ListingDetails extends GetView<ListingDetailsController> {
 
   PreferredSizeWidget _buildAppBar() {
     return simpleAppBar(
-      title: 'Listing Details',
+      title: 'Photo Details',
       actions: [
         Obx(() {
-          if (controller.hasListing) {
-            return Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                GestureDetector(
-                  onTap: controller.shareListing,
-                  child: Image.asset(Assets.imagesShare, height: 20),
-                ),
-              ],
+          if (controller.hasPhoto) {
+            return PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert),
+              onSelected: (value) {
+                switch (value) {
+                  case 'share':
+                    controller.sharePhoto();
+                    break;
+                  case 'edit':
+                    controller.editPhoto();
+                    break;
+                  case 'download':
+                    controller.downloadPhoto();
+                    break;
+                  case 'delete':
+                    controller.deletePhoto();
+                    break;
+                }
+              },
+              itemBuilder:
+                  (context) => [
+                    const PopupMenuItem(
+                      value: 'share',
+                      child: Row(
+                        children: [
+                          Icon(Icons.share, size: 20),
+                          SizedBox(width: 12),
+                          Text('Share'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'edit',
+                      child: Row(
+                        children: [
+                          Icon(Icons.edit, size: 20),
+                          SizedBox(width: 12),
+                          Text('Edit'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'download',
+                      child: Row(
+                        children: [
+                          Icon(Icons.download, size: 20),
+                          SizedBox(width: 12),
+                          Text('Download'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuDivider(),
+                    const PopupMenuItem(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          Icon(Icons.delete, size: 20, color: Colors.red),
+                          SizedBox(width: 12),
+                          Text('Delete', style: TextStyle(color: Colors.red)),
+                        ],
+                      ),
+                    ),
+                  ],
             );
           }
           return const SizedBox.shrink();
         }),
-        const SizedBox(width: 20),
+        const SizedBox(width: 8),
       ],
     );
   }
 
   Widget _buildBody() {
     // Loading state
-    if (controller.isLoading.value && !controller.hasListing) {
+    if (controller.isLoading.value && !controller.hasPhoto) {
       return const Center(child: CircularProgressIndicator());
     }
 
     // Error state
-    if (controller.errorMessage.isNotEmpty && !controller.hasListing) {
+    if (controller.errorMessage.isNotEmpty && !controller.hasPhoto) {
       return _buildErrorState();
     }
 
-    // No listing state
-    if (!controller.hasListing) {
-      return _buildNoListingState();
+    // No photo state
+    if (!controller.hasPhoto) {
+      return _buildNoPhotoState();
     }
 
-    // Success state with listing details
-    final listing = controller.listing.value!;
+    // Success state with photo details
+    final photo = controller.photo.value!;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -70,21 +124,19 @@ class ListingDetails extends GetView<ListingDetailsController> {
           child: ListView(
             padding: AppSizes.DEFAULT,
             children: [
-              _buildImage(listing),
-              const SizedBox(height: 12),
-              _buildDateAndStatus(listing),
-              _buildTitle(listing),
-              _buildLocation(listing),
-              const SizedBox(height: 12),
-              _buildRecipients(),
-              const SizedBox(height: 8),
-              _buildPhotoCount(listing),
-              _buildDivider(),
-              _buildFolders(listing),
+              _buildImage(photo),
+              const SizedBox(height: 16),
+              _buildQuickStats(photo),
+              const SizedBox(height: 16),
+              _buildInfoSection(photo),
+              const SizedBox(height: 16),
+              _buildMetadataSection(photo),
+              const SizedBox(height: 16),
+              if (photo.creator != null) _buildCreatorSection(photo.creator!),
             ],
           ),
         ),
-        _buildDownloadButton(),
+        _buildActionButtons(photo),
       ],
     );
   }
@@ -114,7 +166,7 @@ class ListingDetails extends GetView<ListingDetailsController> {
           ),
           const SizedBox(height: 24),
           ElevatedButton.icon(
-            onPressed: controller.loadListingDetails,
+            onPressed: controller.loadPhotoDetails,
             icon: const Icon(Icons.refresh),
             label: const Text('Retry'),
             style: ElevatedButton.styleFrom(
@@ -128,7 +180,7 @@ class ListingDetails extends GetView<ListingDetailsController> {
     );
   }
 
-  Widget _buildNoListingState() {
+  Widget _buildNoPhotoState() {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -136,7 +188,7 @@ class ListingDetails extends GetView<ListingDetailsController> {
           Image.asset(Assets.imagesFolder, height: 64, color: Colors.grey),
           const SizedBox(height: 16),
           MyText(
-            text: 'No listing data available',
+            text: 'No photo data available',
             size: 18,
             weight: FontWeight.w600,
             color: Colors.grey,
@@ -151,313 +203,452 @@ class ListingDetails extends GetView<ListingDetailsController> {
     );
   }
 
-  Widget _buildImage(ListingItem listing) {
+  Widget _buildImage(Photo photo) {
+    final imageUrl = photo.url ?? photo.watermarkedUrl ?? photo.thumbnailUrl;
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child:
-          listing.imageUrl.isNotEmpty
-              ? CommonImageView(
-                url: listing.imageUrl,
-                height: 220,
-                fit: BoxFit.cover,
-              )
+          imageUrl != null && imageUrl.isNotEmpty
+              ? CommonImageView(url: imageUrl, height: 300, fit: BoxFit.cover)
               : Container(
-                height: 220,
+                height: 300,
                 decoration: BoxDecoration(
                   color: Colors.grey[300],
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Center(
-                  child: Icon(Icons.image, color: Colors.grey, size: 60),
+                  child: Icon(Icons.image, color: Colors.grey, size: 80),
                 ),
               ),
     );
   }
 
-  Widget _buildDateAndStatus(ListingItem listing) {
-    return Row(
+  Widget _buildQuickStats(Photo photo) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [kSecondaryColor.withOpacity(0.1), Colors.white],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: kSecondaryColor.withOpacity(0.2)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _buildStatItem(
+              icon: Icons.attach_money,
+              label: 'Price',
+              value: controller.priceDisplay,
+              color: Colors.green,
+            ),
+          ),
+          Container(width: 1, height: 50, color: kInputBorderColor),
+          Expanded(
+            child: _buildStatItem(
+              icon: Icons.visibility,
+              label: 'Views',
+              value: controller.viewsDisplay,
+              color: kSecondaryColor,
+            ),
+          ),
+          Container(width: 1, height: 50, color: kInputBorderColor),
+          Expanded(
+            child: _buildStatItem(
+              icon: Icons.info,
+              label: 'Status',
+              value: _getStatusText(photo.status),
+              color: _getStatusColor(photo.status),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatItem({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Column(
       children: [
-        Expanded(
-          child: Row(
+        Icon(icon, color: color, size: 28),
+        const SizedBox(height: 8),
+        MyText(text: value, size: 14, weight: FontWeight.w700, color: color),
+        const SizedBox(height: 2),
+        MyText(text: label, size: 11, color: kQuaternaryColor),
+      ],
+    );
+  }
+
+  Widget _buildInfoSection(Photo photo) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: kInputBorderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          MyText(
+            text: 'Photo Information',
+            size: 16,
+            weight: FontWeight.w700,
+            paddingBottom: 12,
+          ),
+          _buildInfoRow(
+            icon: Icons.fingerprint,
+            label: 'Photo ID',
+            value: photo.id ?? 'N/A',
+          ),
+          const SizedBox(height: 8),
+          _buildInfoRow(
+            icon: Icons.calendar_today,
+            label: 'Created',
+            value: _formatDate(photo.createdAt),
+          ),
+          if (photo.updatedAt != null) ...[
+            const SizedBox(height: 8),
+            _buildInfoRow(
+              icon: Icons.update,
+              label: 'Updated',
+              value: _formatDate(photo.updatedAt),
+            ),
+          ],
+          if (photo.eventId != null) ...[
+            const SizedBox(height: 8),
+            _buildInfoRow(
+              icon: Icons.event,
+              label: 'Event ID',
+              value: photo.eventId!,
+            ),
+          ],
+          if (photo.folderId != null) ...[
+            const SizedBox(height: 8),
+            _buildInfoRow(
+              icon: Icons.folder,
+              label: 'Folder ID',
+              value: photo.folderId!,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetadataSection(Photo photo) {
+    if (photo.metadata == null) return const SizedBox.shrink();
+
+    final metadata = photo.metadata!;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: kInputBorderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          MyText(
+            text: 'Metadata',
+            size: 16,
+            weight: FontWeight.w700,
+            paddingBottom: 12,
+          ),
+          if (metadata.fileName != null) ...[
+            _buildInfoRow(
+              icon: Icons.insert_drive_file,
+              label: 'File Name',
+              value: metadata.fileName!,
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (metadata.fileSize != null) ...[
+            _buildInfoRow(
+              icon: Icons.storage,
+              label: 'File Size',
+              value: _formatFileSize(metadata.fileSize!),
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (metadata.width != null && metadata.height != null) ...[
+            _buildInfoRow(
+              icon: Icons.aspect_ratio,
+              label: 'Dimensions',
+              value: '${metadata.width} × ${metadata.height}',
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (metadata.mimeType != null) ...[
+            _buildInfoRow(
+              icon: Icons.image,
+              label: 'Format',
+              value: metadata.mimeType!,
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (metadata.category != null) ...[
+            _buildInfoRow(
+              icon: Icons.category,
+              label: 'Category',
+              value: metadata.category!,
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (metadata.cameraModel != null) ...[
+            _buildInfoRow(
+              icon: Icons.camera_alt,
+              label: 'Camera',
+              value: metadata.cameraModel!,
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (metadata.dateTaken != null) ...[
+            _buildInfoRow(
+              icon: Icons.date_range,
+              label: 'Date Taken',
+              value: _formatDate(metadata.dateTaken),
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (metadata.location != null) ...[
+            _buildInfoRow(
+              icon: Icons.location_on,
+              label: 'Location',
+              value: metadata.location!,
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (metadata.tags != null && metadata.tags!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            MyText(
+              text: 'Tags',
+              size: 12,
+              weight: FontWeight.w600,
+              color: kQuaternaryColor,
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children:
+                  metadata.tags!.map((tag) {
+                    return Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: kSecondaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: kSecondaryColor.withOpacity(0.3),
+                        ),
+                      ),
+                      child: MyText(
+                        text: tag,
+                        size: 12,
+                        color: kSecondaryColor,
+                        weight: FontWeight.w500,
+                      ),
+                    );
+                  }).toList(),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCreatorSection(CreatorInfo creator) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: kInputBorderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          MyText(
+            text: 'Creator',
+            size: 16,
+            weight: FontWeight.w700,
+            paddingBottom: 12,
+          ),
+          Row(
             children: [
-              Icon(Icons.calendar_today, size: 14, color: kQuaternaryColor),
-              const SizedBox(width: 4),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(25),
+                child:
+                    creator.profilePicture != null &&
+                            creator.profilePicture!.isNotEmpty
+                        ? CommonImageView(
+                          url: creator.profilePicture!,
+                          height: 50,
+                          width: 50,
+                          fit: BoxFit.cover,
+                        )
+                        : Container(
+                          height: 50,
+                          width: 50,
+                          color: kSecondaryColor.withOpacity(0.1),
+                          child: const Icon(
+                            Icons.person,
+                            color: kSecondaryColor,
+                            size: 30,
+                          ),
+                        ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    MyText(
+                      text: creator.name ?? 'Unknown Creator',
+                      size: 15,
+                      weight: FontWeight.w600,
+                    ),
+                    const SizedBox(height: 4),
+                    MyText(
+                      text: 'Creator ID: ${creator.id ?? 'N/A'}',
+                      size: 11,
+                      color: kQuaternaryColor,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoRow({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: kSecondaryColor),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               MyText(
-                text: listing.date,
+                text: label,
                 size: 12,
+                weight: FontWeight.w600,
                 color: kQuaternaryColor,
-                weight: FontWeight.w500,
+              ),
+              const SizedBox(height: 2),
+              MyText(
+                text: value,
+                size: 13,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
               ),
             ],
           ),
         ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          decoration: BoxDecoration(
-            color: _getStatusColor(listing.status),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: MyText(
-            text: listing.status,
-            size: 12,
-            color: Colors.white,
-            weight: FontWeight.w600,
-          ),
-        ),
       ],
     );
   }
 
-  Widget _buildTitle(ListingItem listing) {
-    return MyText(
-      text: listing.title,
-      weight: FontWeight.w700,
-      size: 20,
-      paddingTop: 12,
-      paddingBottom: 8,
-    );
-  }
-
-  Widget _buildLocation(ListingItem listing) {
+  Widget _buildActionButtons(Photo photo) {
     return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          Image.asset(Assets.imagesLocation, height: 18),
-          const SizedBox(width: 8),
-          Expanded(
-            child: MyText(
-              text: listing.location,
-              size: 13,
-              color: kQuaternaryColor,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRecipients() {
-    return Obx(() {
-      if (controller.recipientsCount == 0) {
-        return const SizedBox.shrink();
-      }
-
-      return Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: kInputBorderColor),
-        ),
-        child: Row(
-          children: [
-            MyText(
-              text: 'Recipients:',
-              size: 13,
-              weight: FontWeight.w600,
-              paddingRight: 8,
-            ),
-            if (controller.recipientsImages.isNotEmpty)
-              FlutterImageStack(
-                imageList: controller.recipientsImages,
-                showTotalCount: false,
-                totalCount: controller.recipientsCount,
-                itemRadius: 18,
-                itemCount:
-                    controller.recipientsImages.length > 5
-                        ? 5
-                        : controller.recipientsImages.length,
-                itemBorderWidth: 2,
-                itemBorderColor: kInputBorderColor,
-              ),
-            const SizedBox(width: 8),
-            MyText(
-              text: '${controller.recipientsCount} people',
-              size: 12,
-              color: kSecondaryColor,
-              weight: FontWeight.w600,
-            ),
-          ],
-        ),
-      );
-    });
-  }
-
-  Widget _buildPhotoCount(ListingItem listing) {
-    if (listing.totalPhotos == 0) return const SizedBox.shrink();
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: kSecondaryColor.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.photo_library, size: 20, color: kSecondaryColor),
-          const SizedBox(width: 8),
-          MyText(
-            text: '${listing.totalPhotos} photos in this listing',
-            size: 14,
-            color: kSecondaryColor,
-            weight: FontWeight.w600,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDivider() {
-    return Container(
-      height: 1,
-      color: kInputBorderColor,
-      margin: const EdgeInsets.symmetric(vertical: 20),
-    );
-  }
-
-  Widget _buildFolders(ListingItem listing) {
-    if (listing.folders.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 20),
-          child: MyText(
-            text: 'No folders available',
-            size: 14,
-            color: Colors.grey,
-          ),
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        MyText(
-          text: 'Folders',
-          size: 16,
-          weight: FontWeight.w700,
-          paddingBottom: 12,
-        ),
-        ...listing.folders.map((folder) => _buildFolderItem(folder)).toList(),
-      ],
-    );
-  }
-
-  Widget _buildFolderItem(ListingFolder folder) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      padding: AppSizes.DEFAULT,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: kInputBorderColor),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.2),
+            spreadRadius: 1,
+            blurRadius: 4,
+            offset: const Offset(0, -2),
+          ),
+        ],
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => controller.openUserImageFolderDetails(folder),
-          borderRadius: BorderRadius.circular(8),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: kSecondaryColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Image.asset(
-                    Assets.imagesFolder,
-                    height: 32,
-                    width: 32,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      MyText(
-                        text: folder.name,
-                        weight: FontWeight.w600,
-                        size: 15,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          MyText(
-                            text: folder.date,
-                            size: 11,
-                            color: kQuaternaryColor,
-                          ),
-                          MyText(
-                            text: ' • ',
-                            size: 11,
-                            color: kQuaternaryColor,
-                          ),
-                          MyText(
-                            text: '${folder.itemCount} items',
-                            size: 11,
-                            color: kSecondaryColor,
-                            weight: FontWeight.w600,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                Image.asset(Assets.imagesArrowRightIos, height: 16),
-              ],
+      child: Row(
+        children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: controller.sharePhoto,
+              icon: const Icon(Icons.share, size: 18),
+              label: const Text('Share'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: kSecondaryColor,
+                side: const BorderSide(color: kSecondaryColor),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
             ),
           ),
-        ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: MyButton(
+              buttonText: 'Download',
+              onTap: controller.downloadPhoto,
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildDownloadButton() {
-    return Obx(() {
-      if (!controller.hasListing) return const SizedBox.shrink();
-
-      return Container(
-        padding: AppSizes.DEFAULT,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.grey.withOpacity(0.2),
-              spreadRadius: 1,
-              blurRadius: 4,
-              offset: const Offset(0, -2),
-            ),
-          ],
-        ),
-        child: MyButton(
-          buttonText: 'Download in Bulk',
-          onTap: controller.downloadInBulk,
-        ),
-      );
-    });
+  String _formatDate(DateTime? date) {
+    if (date == null) return 'N/A';
+    return DateFormat('MMM dd, yyyy HH:mm').format(date);
   }
 
-  Color _getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'active':
-      case 'scheduled':
+  String _formatFileSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+  }
+
+  String _getStatusText(PhotoStatus status) {
+    switch (status) {
+      case PhotoStatus.active:
+        return 'Active';
+      case PhotoStatus.processing:
+        return 'Processing';
+      case PhotoStatus.archived:
+        return 'Archived';
+      case PhotoStatus.deleted:
+        return 'Deleted';
+      default:
+        return 'Unknown';
+    }
+  }
+
+  Color _getStatusColor(PhotoStatus status) {
+    switch (status) {
+      case PhotoStatus.active:
         return Colors.green;
-      case 'upcoming':
+      case PhotoStatus.processing:
         return Colors.orange;
-      case 'completed':
+      case PhotoStatus.archived:
         return Colors.blue;
+      case PhotoStatus.deleted:
+        return Colors.red;
       default:
         return Colors.grey;
     }

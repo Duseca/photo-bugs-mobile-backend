@@ -2,7 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:photo_bug/app/models/listings_model/listings_model.dart';
+import 'package:photo_bug/app/data/models/photo_model.dart';
 import 'package:photo_bug/app/routes/app_pages.dart';
 import 'package:photo_bug/app/services/photo_service/listing_service.dart';
 
@@ -11,7 +11,7 @@ class ListingController extends GetxController {
   late final ListingService _listingService;
 
   // Observable variables
-  final RxList<ListingItem> listings = <ListingItem>[].obs;
+  final RxList<Photo> listings = <Photo>[].obs;
   final RxBool isLoading = false.obs;
   final RxBool isRefreshing = false.obs;
   final RxString errorMessage = ''.obs;
@@ -55,16 +55,16 @@ class ListingController extends GetxController {
         print('✅ Loaded ${response.data!.length} listings');
 
         if (listings.isEmpty) {
-          errorMessage.value = 'No listings found';
+          errorMessage.value = 'No photos found';
         }
       } else {
-        errorMessage.value = response.error ?? 'Failed to load listings';
+        errorMessage.value = response.error ?? 'Failed to load photos';
         _showError(errorMessage.value);
       }
     } catch (e) {
       print('❌ Error loading listings: $e');
-      errorMessage.value = 'Failed to load listings';
-      _showError('Failed to load listings: $e');
+      errorMessage.value = 'Failed to load photos';
+      _showError('Failed to load photos: $e');
     } finally {
       isLoading.value = false;
     }
@@ -80,45 +80,46 @@ class ListingController extends GetxController {
 
       if (response.success && response.data != null) {
         listings.assignAll(response.data!);
-        _showSuccess('Listings refreshed successfully');
+        _showSuccess('Photos refreshed successfully');
       } else {
-        _showError(response.error ?? 'Failed to refresh listings');
+        _showError(response.error ?? 'Failed to refresh photos');
       }
     } catch (e) {
       print('❌ Error refreshing listings: $e');
-      _showError('Failed to refresh listings');
+      _showError('Failed to refresh photos');
     } finally {
       isRefreshing.value = false;
     }
   }
 
-  /// Navigate to listing details
-  void openListingDetails(ListingItem listing) {
-    if (listing.id.isEmpty) {
-      _showError('Invalid listing');
+  /// Navigate to photo details
+  void openListingDetails(Photo photo) {
+    if (photo.id == null || photo.id!.isEmpty) {
+      _showError('Invalid photo');
       return;
     }
 
     Get.toNamed(
       Routes.LISTING_DETAILS,
-      arguments: {'listingId': listing.id, 'listing': listing},
+      arguments: {'photoId': photo.id, 'photo': photo},
     );
   }
 
-  /// Navigate to add new listing
+  /// Navigate to add new photo
   void addNewListing() {
+    // Navigate to upload photo screen
     Get.toNamed(Routes.ADD_NEW_LISTING);
   }
 
-  /// Delete listing with confirmation
-  Future<void> deleteListing(String listingId) async {
+  /// Delete photo with confirmation
+  Future<void> deleteListing(String photoId) async {
     try {
       // Show confirmation dialog
       final result = await Get.dialog<bool>(
         AlertDialog(
-          title: const Text('Delete Listing'),
+          title: const Text('Delete Photo'),
           content: const Text(
-            'Are you sure you want to delete this listing? This action cannot be undone.',
+            'Are you sure you want to delete this photo? This action cannot be undone.',
           ),
           actions: [
             TextButton(
@@ -137,21 +138,96 @@ class ListingController extends GetxController {
       if (result == true) {
         isLoading.value = true;
 
-        final response = await _listingService.deleteListing(listingId);
+        final response = await _listingService.deleteListing(photoId);
 
         if (response.success) {
-          listings.removeWhere((listing) => listing.id == listingId);
-          _showSuccess('Listing deleted successfully');
+          listings.removeWhere((photo) => photo.id == photoId);
+          _showSuccess('Photo deleted successfully');
         } else {
-          _showError(response.error ?? 'Failed to delete listing');
+          _showError(response.error ?? 'Failed to delete photo');
         }
       }
     } catch (e) {
-      print('❌ Error deleting listing: $e');
-      _showError('Failed to delete listing');
+      print('❌ Error deleting photo: $e');
+      _showError('Failed to delete photo');
     } finally {
       isLoading.value = false;
     }
+  }
+
+  /// Update photo price
+  Future<void> updatePhotoPrice(String photoId, double newPrice) async {
+    try {
+      isLoading.value = true;
+
+      final request = UpdatePhotoRequest(price: newPrice);
+      final response = await _listingService.updateListing(photoId, request);
+
+      if (response.success && response.data != null) {
+        // Update in local list
+        final index = listings.indexWhere((p) => p.id == photoId);
+        if (index != -1) {
+          listings[index] = response.data!;
+        }
+        _showSuccess('Price updated successfully');
+      } else {
+        _showError(response.error ?? 'Failed to update price');
+      }
+    } catch (e) {
+      print('❌ Error updating price: $e');
+      _showError('Failed to update price');
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  /// Update photo metadata
+  Future<void> updatePhotoMetadata(
+    String photoId,
+    PhotoMetadata metadata,
+  ) async {
+    try {
+      isLoading.value = true;
+
+      final request = UpdatePhotoRequest(metadata: metadata);
+      final response = await _listingService.updateListing(photoId, request);
+
+      if (response.success && response.data != null) {
+        // Update in local list
+        final index = listings.indexWhere((p) => p.id == photoId);
+        if (index != -1) {
+          listings[index] = response.data!;
+        }
+        _showSuccess('Photo updated successfully');
+      } else {
+        _showError(response.error ?? 'Failed to update photo');
+      }
+    } catch (e) {
+      print('❌ Error updating photo: $e');
+      _showError('Failed to update photo');
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  /// Get photos by event
+  List<Photo> getPhotosByEvent(String eventId) {
+    return listings.where((p) => p.eventId == eventId).toList();
+  }
+
+  /// Get photos by folder
+  List<Photo> getPhotosByFolder(String folderId) {
+    return listings.where((p) => p.folderId == folderId).toList();
+  }
+
+  /// Get total price of all photos
+  double get totalPhotosValue {
+    return listings.fold(0.0, (sum, photo) => sum + (photo.price ?? 0.0));
+  }
+
+  /// Get total views
+  int get totalViews {
+    return listings.fold(0, (sum, photo) => sum + (photo.views ?? 0));
   }
 
   /// Check if there are any listings
@@ -200,9 +276,9 @@ class ListingDetailsController extends GetxController {
   late final ListingService _listingService;
 
   // Observable variables
-  final Rx<ListingItem?> listing = Rx<ListingItem?>(null);
+  final Rx<Photo?> photo = Rx<Photo?>(null);
   final RxBool isLoading = false.obs;
-  final RxString listingId = ''.obs;
+  final RxString photoId = ''.obs;
   final RxString errorMessage = ''.obs;
 
   @override
@@ -227,22 +303,22 @@ class ListingDetailsController extends GetxController {
     final arguments = Get.arguments;
 
     if (arguments != null) {
-      listingId.value = arguments['listingId'] ?? '';
-      listing.value = arguments['listing'];
+      photoId.value = arguments['photoId'] ?? '';
+      photo.value = arguments['photo'];
     }
 
-    // If listing not passed, fetch it from API
-    if (listing.value == null && listingId.value.isNotEmpty) {
-      loadListingDetails();
-    } else if (listing.value == null) {
-      errorMessage.value = 'No listing data available';
+    // If photo not passed, fetch it from API
+    if (photo.value == null && photoId.value.isNotEmpty) {
+      loadPhotoDetails();
+    } else if (photo.value == null) {
+      errorMessage.value = 'No photo data available';
     }
   }
 
-  /// Load listing details from API
-  Future<void> loadListingDetails() async {
-    if (listingId.value.isEmpty) {
-      errorMessage.value = 'Invalid listing ID';
+  /// Load photo details from API
+  Future<void> loadPhotoDetails() async {
+    if (photoId.value.isEmpty) {
+      errorMessage.value = 'Invalid photo ID';
       return;
     }
 
@@ -250,30 +326,30 @@ class ListingDetailsController extends GetxController {
       isLoading.value = true;
       errorMessage.value = '';
 
-      print('🔄 Loading listing details for ID: ${listingId.value}');
+      print('🔄 Loading photo details for ID: ${photoId.value}');
 
-      final response = await _listingService.getListingById(listingId.value);
+      final response = await _listingService.getListingById(photoId.value);
 
       if (response.success && response.data != null) {
-        listing.value = response.data;
-        print('✅ Listing details loaded: ${response.data!.title}');
+        photo.value = response.data;
+        print('✅ Photo details loaded');
       } else {
-        errorMessage.value = response.error ?? 'Failed to load listing details';
+        errorMessage.value = response.error ?? 'Failed to load photo details';
         _showError(errorMessage.value);
       }
     } catch (e) {
-      print('❌ Error loading listing details: $e');
-      errorMessage.value = 'Failed to load listing details';
-      _showError('Failed to load listing details: $e');
+      print('❌ Error loading photo details: $e');
+      errorMessage.value = 'Failed to load photo details';
+      _showError('Failed to load photo details: $e');
     } finally {
       isLoading.value = false;
     }
   }
 
-  /// Share listing
-  void shareListing() {
-    if (listing.value == null) {
-      _showError('No listing to share');
+  /// Share photo
+  void sharePhoto() {
+    if (photo.value == null) {
+      _showError('No photo to share');
       return;
     }
 
@@ -282,48 +358,113 @@ class ListingDetailsController extends GetxController {
     _showSuccess('Sharing functionality coming soon!');
   }
 
-  /// Navigate to user image folder details
-  void openUserImageFolderDetails(ListingFolder folder) {
-    if (folder.id.isEmpty) {
-      _showError('Invalid folder');
+  /// Download photo
+  void downloadPhoto() {
+    if (photo.value == null) {
+      _showError('No photo available');
       return;
     }
 
-    // TODO: Implement navigation to folder details
-    Get.snackbar(
-      'Folder',
-      'Opening ${folder.name}',
-      snackPosition: SnackPosition.BOTTOM,
-    );
+    // TODO: Implement download functionality
+    _showSuccess('Download feature coming soon!');
   }
 
-  /// Navigate to bulk download
-  void downloadInBulk() {
-    if (listing.value == null) {
-      _showError('No listing available');
+  /// Edit photo
+  void editPhoto() {
+    if (photo.value == null) {
+      _showError('No photo available');
       return;
     }
 
-    // TODO: Implement navigation to bulk download
-    _showSuccess('Bulk download feature coming soon!');
+    // Navigate to edit screen
+    //  Get.toNamed(Routes.EDIT_PHOTO, arguments: {'photo': photo.value});
   }
 
-  /// Get recipients count
-  int get recipientsCount => listing.value?.recipients.length ?? 0;
+  /// Delete photo
+  Future<void> deletePhoto() async {
+    if (photo.value == null || photo.value!.id == null) {
+      _showError('Invalid photo');
+      return;
+    }
 
-  /// Get recipients images (limited to display)
-  List<String> get recipientsImages {
-    if (listing.value == null) return [];
+    try {
+      final result = await Get.dialog<bool>(
+        AlertDialog(
+          title: const Text('Delete Photo'),
+          content: const Text(
+            'Are you sure you want to delete this photo? This action cannot be undone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Get.back(result: false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Get.back(result: true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      );
 
-    final images = listing.value!.recipients;
-    return images.length > 5 ? images.take(5).toList() : images;
+      if (result == true) {
+        isLoading.value = true;
+
+        final response = await _listingService.deleteListing(photo.value!.id!);
+
+        if (response.success) {
+          _showSuccess('Photo deleted successfully');
+          Get.back(); // Go back to listings screen
+        } else {
+          _showError(response.error ?? 'Failed to delete photo');
+        }
+      }
+    } catch (e) {
+      print('❌ Error deleting photo: $e');
+      _showError('Failed to delete photo');
+    } finally {
+      isLoading.value = false;
+    }
   }
 
-  /// Check if listing has data
-  bool get hasListing => listing.value != null;
+  /// Get photo URL (watermarked or original based on ownership)
+  String? get displayUrl {
+    if (photo.value == null) return null;
 
-  /// Get listing title
-  String get listingTitle => listing.value?.title ?? 'Listing Details';
+    // Show watermarked URL if available, otherwise show original
+    return photo.value!.watermarkedUrl ?? photo.value!.url;
+  }
+
+  /// Get photo price display
+  String get priceDisplay {
+    if (photo.value?.price == null) return 'Free';
+    return '\$${photo.value!.price!.toStringAsFixed(2)}';
+  }
+
+  /// Get photo views display
+  String get viewsDisplay {
+    final views = photo.value?.views ?? 0;
+    if (views >= 1000000) {
+      return '${(views / 1000000).toStringAsFixed(1)}M views';
+    } else if (views >= 1000) {
+      return '${(views / 1000).toStringAsFixed(1)}K views';
+    }
+    return '$views views';
+  }
+
+  /// Get creator name
+  String get creatorName {
+    return photo.value?.creator?.name ?? 'Unknown';
+  }
+
+  /// Check if photo has data
+  bool get hasPhoto => photo.value != null;
+
+  /// Get photo title (filename or metadata)
+  String get photoTitle {
+    return photo.value?.metadata?.fileName ?? 'Photo Details';
+  }
 
   /// Show success message
   void _showSuccess(String message) {
