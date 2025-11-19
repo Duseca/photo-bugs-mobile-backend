@@ -32,6 +32,7 @@ abstract class Routes {
   static const USER_EVENTS = _Paths.USER_EVENTS;
   static const FAVOURITES = _Paths.FAVOURITES;
   static const PROFILE = _Paths.PROFILE;
+  static const PHOTO_UPLOAD = _Paths.PHOTO_UPLOAD;
 }
 
 abstract class _Paths {
@@ -63,4 +64,5 @@ abstract class _Paths {
   static const USER_EVENTS = '/user-events';
   static const FAVOURITES = '/favourites';
   static const PROFILE = '/profile';
+  static const PHOTO_UPLOAD = '/photo-upload';
 }

@@ -1,3 +1,5 @@
+// models/photo_model.dart
+
 import 'dart:convert';
 
 class Photo {
@@ -11,6 +13,7 @@ class Photo {
   final String? watermarkedUrl;
   final String? watermarkedLink;
   final String? thumbnailUrl;
+  final String? accessImage;
   final double? price;
   final PhotoMetadata? metadata;
   final List<String>? ownership;
@@ -30,6 +33,7 @@ class Photo {
     this.watermarkedUrl,
     this.watermarkedLink,
     this.thumbnailUrl,
+    this.accessImage,
     this.price,
     this.metadata,
     this.ownership,
@@ -42,69 +46,115 @@ class Photo {
   factory Photo.fromJson(Map<String, dynamic> json) {
     return Photo(
       id: json['_id'] ?? json['id'],
-      creatorId:
-          json['creatorId'] ??
-          json['creator_id'] ??
-          (json['created_by'] is Map ? json['created_by']['_id'] : null),
-      creator:
-          json['created_by'] != null && json['created_by'] is Map
-              ? CreatorInfo.fromJson(json['created_by'])
-              : null,
+      creatorId: _parseCreatorId(json),
+      creator: _parseCreator(json),
       eventId: json['eventId'] ?? json['event_id'],
       folderId: json['folderId'] ?? json['folder_id'],
       url: json['url'] ?? json['file'],
       link: json['link'],
-      watermarkedUrl: json['thumbnailUrl'] ?? json['thumbnail_url'],
+      watermarkedUrl: json['watermarked_link'] ?? json['watermarkedLink'],
       watermarkedLink: json['watermarked_link'] ?? json['watermarkedLink'],
-      price: json['price']?.toDouble(),
+      thumbnailUrl: json['thumbnailUrl'] ?? json['thumbnail_url'],
+      accessImage: json['access_image'] ?? json['accessImage'],
+      price: _parsePrice(json['price']),
       metadata: _parseMetadata(json),
       ownership:
           json['ownership'] != null
               ? List<String>.from(json['ownership'])
               : null,
-      views: json['views']?.toInt(),
-      createdAt:
-          json['createdAt'] != null
-              ? DateTime.tryParse(json['createdAt'])
-              : null,
-      updatedAt:
-          json['updatedAt'] != null
-              ? DateTime.tryParse(json['updatedAt'])
-              : null,
+      views: _parseViews(json['views']),
+      createdAt: _parseDateTime(json['createdAt']),
+      updatedAt: _parseDateTime(json['updatedAt']),
       status: PhotoStatusExtension.fromString(json['status'] ?? 'active'),
     );
+  }
+
+  static String? _parseCreatorId(Map<String, dynamic> json) {
+    if (json['creatorId'] != null) return json['creatorId'] as String?;
+    if (json['creator_id'] != null) return json['creator_id'] as String?;
+    if (json['created_by'] is Map) {
+      return json['created_by']['_id'] ?? json['created_by']['id'];
+    }
+    if (json['created_by'] is String) return json['created_by'] as String?;
+    return null;
+  }
+
+  static CreatorInfo? _parseCreator(Map<String, dynamic> json) {
+    if (json['created_by'] != null && json['created_by'] is Map) {
+      return CreatorInfo.fromJson(json['created_by'] as Map<String, dynamic>);
+    }
+    if (json['creator'] != null && json['creator'] is Map) {
+      return CreatorInfo.fromJson(json['creator'] as Map<String, dynamic>);
+    }
+    return null;
+  }
+
+  static double? _parsePrice(dynamic price) {
+    if (price == null) return null;
+    if (price is double) return price;
+    if (price is int) return price.toDouble();
+    if (price is String) return double.tryParse(price);
+    return null;
+  }
+
+  static int? _parseViews(dynamic views) {
+    if (views == null) return 0;
+    if (views is int) return views;
+    if (views is double) return views.toInt();
+    if (views is String) return int.tryParse(views) ?? 0;
+    return 0;
+  }
+
+  static DateTime? _parseDateTime(dynamic dateTime) {
+    if (dateTime == null) return null;
+    if (dateTime is DateTime) return dateTime;
+    if (dateTime is String) return DateTime.tryParse(dateTime);
+    return null;
   }
 
   static PhotoMetadata? _parseMetadata(Map<String, dynamic> json) {
     PhotoMetadata? metadata;
 
-    // Try to parse metadata field
     if (json['metadata'] != null) {
       if (json['metadata'] is String) {
-        // If metadata is a JSON string, parse it
         try {
           final metadataJson = jsonDecode(json['metadata'] as String);
           if (metadataJson is Map<String, dynamic>) {
             metadata = PhotoMetadata.fromJson(metadataJson);
           }
         } catch (e) {
-          print('Error parsing metadata string: $e');
+          print('⚠️ Error parsing metadata string: $e');
         }
       } else if (json['metadata'] is Map) {
-        metadata = PhotoMetadata.fromJson(json['metadata']);
+        metadata = PhotoMetadata.fromJson(
+          json['metadata'] as Map<String, dynamic>,
+        );
       }
     }
 
-    // Add views if it exists at root level
-    if (json['views'] != null) {
-      if (metadata != null) {
-        metadata = metadata.copyWith(views: json['views']?.toInt());
-      } else {
-        metadata = PhotoMetadata(views: json['views']?.toInt());
-      }
+    if (json['views'] != null && metadata != null) {
+      metadata = metadata.copyWith(views: _parseViews(json['views']));
     }
 
     return metadata;
+  }
+
+  String get displayUrl {
+    return accessImage ??
+        watermarkedUrl ??
+        watermarkedLink ??
+        thumbnailUrl ??
+        link ??
+        url ??
+        '';
+  }
+
+  String get downloadUrl {
+    return link ?? url ?? '';
+  }
+
+  String get previewUrl {
+    return thumbnailUrl ?? accessImage ?? watermarkedUrl ?? url ?? '';
   }
 
   Map<String, dynamic> toJson() {
@@ -116,11 +166,12 @@ class Photo {
       if (folderId != null) 'folderId': folderId,
       if (url != null) 'url': url,
       if (link != null) 'link': link,
-      if (watermarkedUrl != null) 'thumbnailUrl': watermarkedUrl,
+      if (watermarkedUrl != null) 'watermarked_link': watermarkedUrl,
       if (watermarkedLink != null) 'watermarked_link': watermarkedLink,
       if (thumbnailUrl != null) 'thumbnailUrl': thumbnailUrl,
+      if (accessImage != null) 'access_image': accessImage,
       if (price != null) 'price': price,
-      if (metadata != null) 'metadata': metadata!.toJson(),
+      if (metadata != null) 'metadata': jsonEncode(metadata!.toJson()),
       if (ownership != null) 'ownership': ownership,
       if (views != null) 'views': views,
       if (createdAt != null) 'createdAt': createdAt!.toIso8601String(),
@@ -140,6 +191,7 @@ class Photo {
     String? watermarkedUrl,
     String? watermarkedLink,
     String? thumbnailUrl,
+    String? accessImage,
     double? price,
     PhotoMetadata? metadata,
     List<String>? ownership,
@@ -159,6 +211,7 @@ class Photo {
       watermarkedUrl: watermarkedUrl ?? this.watermarkedUrl,
       watermarkedLink: watermarkedLink ?? this.watermarkedLink,
       thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
+      accessImage: accessImage ?? this.accessImage,
       price: price ?? this.price,
       metadata: metadata ?? this.metadata,
       ownership: ownership ?? this.ownership,
@@ -171,7 +224,7 @@ class Photo {
 
   @override
   String toString() {
-    return 'Photo{id: $id, url: $url, price: $price, creator: ${creator?.name}, views: $views}';
+    return 'Photo{id: $id, creator: ${creator?.name}, price: \$$price, views: $views}';
   }
 
   @override
@@ -186,15 +239,32 @@ class Photo {
 class CreatorInfo {
   final String? id;
   final String? name;
+  final String? userName;
   final String? profilePicture;
+  final String? email;
+  final String? phone;
+  final String? role;
 
-  CreatorInfo({this.id, this.name, this.profilePicture});
+  CreatorInfo({
+    this.id,
+    this.name,
+    this.userName,
+    this.profilePicture,
+    this.email,
+    this.phone,
+    this.role,
+  });
 
   factory CreatorInfo.fromJson(Map<String, dynamic> json) {
     return CreatorInfo(
       id: json['_id'] ?? json['id'],
       name: json['name'],
-      profilePicture: json['profile_picture'] ?? json['profilePicture'],
+      userName: json['user_name'] ?? json['userName'] ?? json['username'],
+      profilePicture:
+          json['profile_picture'] ?? json['profilePicture'] ?? json['avatar'],
+      email: json['email'],
+      phone: json['phone'],
+      role: json['role'],
     );
   }
 
@@ -202,17 +272,21 @@ class CreatorInfo {
     return {
       if (id != null) '_id': id,
       if (name != null) 'name': name,
+      if (userName != null) 'user_name': userName,
       if (profilePicture != null) 'profile_picture': profilePicture,
+      if (email != null) 'email': email,
+      if (phone != null) 'phone': phone,
+      if (role != null) 'role': role,
     };
   }
 
   @override
-  String toString() => 'CreatorInfo{id: $id, name: $name}';
+  String toString() => 'CreatorInfo{id: $id, name: $name, role: $role}';
 }
 
 class PhotoMetadata {
   final String? fileName;
-  final int? fileSize; // in bytes
+  final int? fileSize;
   final String? mimeType;
   final int? width;
   final int? height;
@@ -241,22 +315,53 @@ class PhotoMetadata {
 
   factory PhotoMetadata.fromJson(Map<String, dynamic> json) {
     return PhotoMetadata(
-      fileName: json['fileName'] ?? json['file_name'],
-      fileSize: json['fileSize']?.toInt() ?? json['file_size']?.toInt(),
-      mimeType: json['mimeType'] ?? json['mime_type'],
-      width: json['width']?.toInt(),
-      height: json['height']?.toInt(),
-      dateTaken:
-          json['dateTaken'] != null
-              ? DateTime.tryParse(json['dateTaken'])
-              : null,
-      cameraModel: json['cameraModel'] ?? json['camera_model'],
+      fileName: json['fileName'] ?? json['file_name'] ?? json['filename'],
+      fileSize: _parseInt(json['fileSize'] ?? json['file_size']),
+      mimeType: json['mimeType'] ?? json['mime_type'] ?? json['type'],
+      width: _parseInt(json['width']),
+      height: _parseInt(json['height']),
+      dateTaken: _parseDateTime(json['dateTaken'] ?? json['date_taken']),
+      cameraModel:
+          json['cameraModel'] ?? json['camera_model'] ?? json['camera'],
       location: json['location'],
       category: json['category'],
-      tags: json['tags'] != null ? List<String>.from(json['tags']) : null,
-      views: json['views']?.toInt(),
+      tags: _parseTags(json['tags']),
+      views: _parseInt(json['views']),
       exifData: json['exifData'] ?? json['exif_data'],
     );
+  }
+
+  static int? _parseInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is double) return value.toInt();
+    if (value is String) return int.tryParse(value);
+    return null;
+  }
+
+  static DateTime? _parseDateTime(dynamic value) {
+    if (value == null) return null;
+    if (value is DateTime) return value;
+    if (value is String) return DateTime.tryParse(value);
+    return null;
+  }
+
+  static List<String>? _parseTags(dynamic value) {
+    if (value == null) return null;
+    if (value is List) {
+      return value.map((e) => e.toString()).toList();
+    }
+    if (value is String) {
+      try {
+        final decoded = jsonDecode(value);
+        if (decoded is List) {
+          return decoded.map((e) => e.toString()).toList();
+        }
+      } catch (e) {
+        return [value];
+      }
+    }
+    return null;
   }
 
   Map<String, dynamic> toJson() {
@@ -308,43 +413,75 @@ class PhotoMetadata {
 
   @override
   String toString() {
-    return 'PhotoMetadata{fileName: $fileName, fileSize: $fileSize, width: $width, height: $height, views: $views}';
+    return 'PhotoMetadata{fileName: $fileName, size: ${_formatFileSize(fileSize)}, dimensions: ${width}x$height}';
+  }
+
+  String _formatFileSize(int? bytes) {
+    if (bytes == null) return 'Unknown';
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
   }
 }
 
-// Upload Photo Request Model
 class UploadPhotoRequest {
   final double? price;
   final String? file;
+  final String? link;
   final PhotoMetadata? metadata;
+  final String? eventId;
+  final String? folderId;
 
-  UploadPhotoRequest({this.price, this.file, this.metadata});
+  UploadPhotoRequest({
+    this.price,
+    this.file,
+    this.link,
+    this.metadata,
+    this.eventId,
+    this.folderId,
+  });
 
   Map<String, dynamic> toJson() {
-    return {
-      if (price != null) 'price': price,
-      if (file != null) 'file': file,
-      if (metadata != null) 'metadata': metadata!.toJson(),
-    };
+    final json = <String, dynamic>{};
+
+    if (price != null) json['price'] = price;
+    if (file != null) json['file'] = file;
+    if (link != null) json['link'] = link;
+    if (eventId != null) json['eventId'] = eventId;
+    if (folderId != null) json['folderId'] = folderId;
+
+    if (metadata != null) {
+      json['metadata'] = jsonEncode(metadata!.toJson());
+    }
+
+    return json;
   }
 }
 
-// Update Photo Request Model
 class UpdatePhotoRequest {
   final double? price;
   final PhotoMetadata? metadata;
+  final PhotoStatus? status;
 
-  UpdatePhotoRequest({this.price, this.metadata});
+  UpdatePhotoRequest({this.price, this.metadata, this.status});
 
   Map<String, dynamic> toJson() {
-    return {
-      if (price != null) 'price': price,
-      if (metadata != null) 'metadata': metadata!.toJson(),
-    };
+    final json = <String, dynamic>{};
+
+    if (price != null) json['price'] = price;
+    if (status != null) json['status'] = status!.value;
+
+    if (metadata != null) {
+      json['metadata'] = jsonEncode(metadata!.toJson());
+    }
+
+    return json;
   }
 }
 
-// Photo Status Enum
 enum PhotoStatus { active, processing, archived, deleted }
 
 extension PhotoStatusExtension on PhotoStatus {
@@ -369,6 +506,7 @@ extension PhotoStatusExtension on PhotoStatus {
         return PhotoStatus.archived;
       case 'deleted':
         return PhotoStatus.deleted;
+      case 'active':
       default:
         return PhotoStatus.active;
     }

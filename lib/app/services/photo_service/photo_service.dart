@@ -254,7 +254,7 @@ class PhotoService extends GetxService {
       _isUploading.value = true;
       _uploadProgress.value = 0.0;
 
-      print('📤 Starting photo upload...');
+      print('📤 Starting photo upload111...');
 
       // Validate file
       if (!await file.exists()) {
@@ -284,28 +284,14 @@ class PhotoService extends GetxService {
         );
       }
 
-      // ✅ NEW: Get Google Drive access token if available
-      String? googleAccessToken;
-      if (_authService.isGoogleDriveConnected) {
-        googleAccessToken = await _authService.getValidGoogleAccessToken();
-        if (googleAccessToken != null) {
-          print('✅ Using Google Drive access token for upload');
-        } else {
-          print('⚠️ Google Drive connected but token not available');
-        }
-      } else {
-        print('ℹ️ Google Drive not connected');
-      }
-
       final url = '${ApiConfig.fullApiUrl}${ApiConfig.endpoints.uploadPhoto}';
       print('📍 Upload URL: $url');
 
       // Create multipart request
       final request = http.MultipartRequest('POST', Uri.parse(url));
 
-      // Add headers
+      // Add headers - SIRF BEARER TOKEN
       request.headers.addAll({'Authorization': 'Bearer $token'});
-
       print('🔑 Authorization header added');
 
       // Add file
@@ -313,7 +299,6 @@ class PhotoService extends GetxService {
         'image',
         file.path,
       );
-
       request.files.add(multipartFile);
       print('📎 File added to request: ${file.path.split('/').last}');
 
@@ -323,17 +308,11 @@ class PhotoService extends GetxService {
         print('💰 Price added: $price');
       }
 
-      // ✅ FIXED: Add metadata as JSON string
+      // Add metadata as JSON string
       if (metadata != null) {
         final metadataJson = jsonEncode(metadata.toJson());
         request.fields['metadata'] = metadataJson;
         print('📋 Metadata added: $metadataJson');
-      }
-
-      // ✅ NEW: Add Google Drive token if available
-      if (googleAccessToken != null && googleAccessToken.isNotEmpty) {
-        request.fields['idToken'] = googleAccessToken;
-        print('🔐 Google Drive token added to request');
       }
 
       print('🚀 Sending upload request...');
@@ -343,9 +322,7 @@ class PhotoService extends GetxService {
       final response = await http.Response.fromStream(streamedResponse);
 
       print('📥 Response received: ${response.statusCode}');
-      print(
-        '📄 Response body preview: ${response.body.substring(0, response.body.length > 200 ? 200 : response.body.length)}...',
-      );
+      print('📄 Response body: ${response.body}');
 
       // Handle response
       if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -353,7 +330,7 @@ class PhotoService extends GetxService {
           final jsonResponse = json.decode(response.body);
           print('✅ JSON parsed successfully');
 
-          // ✅ FIXED: Handle multiple possible response structures
+          // Handle multiple possible response structures
           dynamic photoData;
 
           if (jsonResponse is Map<String, dynamic>) {

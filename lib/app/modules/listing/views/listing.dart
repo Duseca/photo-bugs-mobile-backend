@@ -1,4 +1,4 @@
-// modules/listing/views/listing.dart
+// views/listing.dart
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -18,7 +18,7 @@ class Listing extends GetView<ListingController> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: simpleAppBar(title: 'My Listings'),
+      appBar: simpleAppBar(title: 'Listings'),
       floatingActionButton: _buildFloatingActionButton(),
       body: _buildBody(),
     );
@@ -35,22 +35,18 @@ class Listing extends GetView<ListingController> {
 
   Widget _buildBody() {
     return Obx(() {
-      // Loading state
       if (controller.isLoading.value && controller.listings.isEmpty) {
         return const Center(child: CircularProgressIndicator());
       }
 
-      // Error state with retry
       if (controller.errorMessage.isNotEmpty && controller.listings.isEmpty) {
         return _buildErrorState();
       }
 
-      // Empty state
       if (controller.listings.isEmpty) {
         return _buildEmptyState();
       }
 
-      // Success state with listings
       return RefreshIndicator(
         onRefresh: controller.refreshListings,
         child: Column(
@@ -153,19 +149,20 @@ class Listing extends GetView<ListingController> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Image.asset(Assets.imagesFolder, height: 64, color: Colors.grey),
+          Icon(Icons.error_outline, size: 64, color: Colors.red.shade300),
           const SizedBox(height: 16),
           MyText(
-            text: 'No Photos Found',
+            text: 'Failed to Load Photos',
             size: 18,
             weight: FontWeight.w600,
-            color: Colors.grey,
+            color: Colors.red.shade700,
           ),
           const SizedBox(height: 8),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32),
             child: MyText(
-              text: 'Upload your first photo to get started',
+              text:
+                  'Unable to fetch your photos. Please check your connection.',
               size: 14,
               color: Colors.grey,
               textAlign: TextAlign.center,
@@ -175,7 +172,7 @@ class Listing extends GetView<ListingController> {
           ElevatedButton.icon(
             onPressed: controller.loadListings,
             icon: const Icon(Icons.refresh),
-            label: const Text('Refresh'),
+            label: const Text('Retry'),
             style: ElevatedButton.styleFrom(
               backgroundColor: kSecondaryColor,
               foregroundColor: Colors.white,
@@ -220,7 +217,6 @@ class Listing extends GetView<ListingController> {
       key: Key(photo.id ?? 'photo_$index'),
       direction: DismissDirection.endToStart,
       confirmDismiss: (direction) async {
-        // Show confirmation dialog
         return await Get.dialog<bool>(
           AlertDialog(
             title: const Text('Delete Photo'),
@@ -241,7 +237,7 @@ class Listing extends GetView<ListingController> {
       },
       onDismissed: (direction) {
         if (photo.id != null) {
-          controller.deleteListing(photo.id!);
+          // controller.deleteListing(photo.id!);
         }
       },
       background: Container(
@@ -254,7 +250,7 @@ class Listing extends GetView<ListingController> {
         child: const Icon(Icons.delete, color: Colors.white, size: 30),
       ),
       child: Padding(
-        padding: const EdgeInsets.only(bottom: 24),
+        padding: const EdgeInsets.only(bottom: 16),
         child: GestureDetector(
           onTap: () => controller.openListingDetails(photo),
           child: _buildListingCard(photo),
@@ -297,7 +293,7 @@ class Listing extends GetView<ListingController> {
   }
 
   Widget _buildListingImage(Photo photo) {
-    final imageUrl = photo.thumbnailUrl ?? photo.watermarkedUrl ?? photo.url;
+    final imageUrl = photo.previewUrl;
 
     return ClipRRect(
       borderRadius: const BorderRadius.only(
@@ -305,7 +301,7 @@ class Listing extends GetView<ListingController> {
         bottomLeft: Radius.circular(8),
       ),
       child:
-          imageUrl != null && imageUrl.isNotEmpty
+          imageUrl.isNotEmpty
               ? CommonImageView(
                 url: imageUrl,
                 height: 100,
@@ -323,7 +319,7 @@ class Listing extends GetView<ListingController> {
 
   Widget _buildListingInfo(Photo photo) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
@@ -352,19 +348,20 @@ class Listing extends GetView<ListingController> {
             ),
           ],
         ),
+        const SizedBox(height: 6),
         MyText(
           text: _getPhotoTitle(photo),
           weight: FontWeight.w600,
           size: 15,
-          paddingTop: 6,
-          paddingBottom: 6,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),
+        const SizedBox(height: 4),
         if (photo.metadata?.category != null) ...[
           Row(
             children: [
               const Icon(Icons.category, size: 14, color: kSecondaryColor),
+              const SizedBox(width: 4),
               Expanded(
                 child: MyText(
                   text: photo.metadata!.category!,
@@ -372,13 +369,12 @@ class Listing extends GetView<ListingController> {
                   color: kQuaternaryColor,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  paddingLeft: 4,
                 ),
               ),
             ],
           ),
+          const SizedBox(height: 4),
         ],
-        const SizedBox(height: 4),
         Row(
           children: [
             if (photo.price != null && photo.price! > 0) ...[
@@ -395,7 +391,7 @@ class Listing extends GetView<ListingController> {
               const Icon(Icons.visibility, size: 14, color: kSecondaryColor),
               const SizedBox(width: 4),
               MyText(
-                text: '${photo.views} views',
+                text: '${photo.views}',
                 size: 11,
                 color: kSecondaryColor,
                 weight: FontWeight.w500,
@@ -409,18 +405,32 @@ class Listing extends GetView<ListingController> {
 
   String _formatDate(DateTime? date) {
     if (date == null) return 'Unknown date';
+    final now = DateTime.now();
+    final difference = now.difference(date);
+
+    if (difference.inDays == 0) {
+      if (difference.inHours == 0) {
+        return '${difference.inMinutes}m ago';
+      }
+      return '${difference.inHours}h ago';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays}d ago';
+    }
     return DateFormat('MMM dd, yyyy').format(date);
   }
 
   String _getPhotoTitle(Photo photo) {
-    // Try to get title from metadata filename
     if (photo.metadata?.fileName != null) {
-      return photo.metadata!.fileName!;
+      final fileName = photo.metadata!.fileName!;
+      if (fileName.length > 30) {
+        return '${fileName.substring(0, 27)}...';
+      }
+      return fileName;
     }
-    // Fallback to ID or "Untitled"
-    return photo.id != null
-        ? 'Photo ${photo.id!.substring(0, 8)}'
-        : 'Untitled Photo';
+    if (photo.id != null) {
+      return 'Photo ${photo.id!.substring(0, 8)}';
+    }
+    return 'Untitled Photo';
   }
 
   String _getStatusText(PhotoStatus status) {
@@ -433,8 +443,6 @@ class Listing extends GetView<ListingController> {
         return 'Archived';
       case PhotoStatus.deleted:
         return 'Deleted';
-      default:
-        return 'Unknown';
     }
   }
 
@@ -448,8 +456,6 @@ class Listing extends GetView<ListingController> {
         return Colors.blue;
       case PhotoStatus.deleted:
         return Colors.red;
-      default:
-        return Colors.grey;
     }
   }
 }

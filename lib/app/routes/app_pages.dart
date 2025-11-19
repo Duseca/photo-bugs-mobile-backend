@@ -20,6 +20,7 @@ import 'package:photo_bug/app/modules/favorite/binding/favourite_binding.dart';
 import 'package:photo_bug/app/modules/favorite/view/user_favorite.dart';
 import 'package:photo_bug/app/modules/home/binding/home_binding.dart';
 import 'package:photo_bug/app/modules/home/view/home_view.dart';
+import 'package:photo_bug/app/modules/home/widgets/upload_image.dart';
 import 'package:photo_bug/app/modules/image_detail/binding/image_detail_binding.dart';
 import 'package:photo_bug/app/modules/image_detail/view/image_detail_view.dart';
 import 'package:photo_bug/app/modules/launch/bindings/launch_bindings.dart';
@@ -106,6 +107,11 @@ class AppPages {
     GetPage(
       name: _Paths.HOME,
       page: () => const Home(),
+      binding: HomeBinding(),
+    ),
+    GetPage(
+      name: _Paths.PHOTO_UPLOAD,
+      page: () => const PhotoUploadScreen(),
       binding: HomeBinding(),
     ),
     GetPage(

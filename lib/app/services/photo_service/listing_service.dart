@@ -13,17 +13,16 @@ class ListingService extends GetxService {
 
   late final AuthService _authService;
 
-  // Reactive variables
   final RxList<Photo> _userListings = <Photo>[].obs;
   final RxBool _isLoading = false.obs;
   final RxBool _isRefreshing = false.obs;
+  final RxInt _totalPhotos = 0.obs;
 
-  // Getters
   List<Photo> get userListings => _userListings;
   bool get isLoading => _isLoading.value;
   bool get isRefreshing => _isRefreshing.value;
+  int get totalPhotos => _totalPhotos.value;
 
-  // Streams
   Stream<List<Photo>> get listingsStream => _userListings.stream;
   Stream<bool> get loadingStream => _isLoading.stream;
 
@@ -36,12 +35,10 @@ class ListingService extends GetxService {
     try {
       _authService = Get.find<AuthService>();
 
-      // Load listings if authenticated
       if (_authService.isAuthenticated) {
         await loadUserListings();
       }
 
-      // Listen to auth state changes
       _setupAuthListener();
     } catch (e) {
       print('❌ ListingService initialization error: $e');
@@ -58,63 +55,69 @@ class ListingService extends GetxService {
     });
   }
 
-  // ==================== GET USER LISTINGS (PHOTOS) ====================
-
-  /// Get user's photos as listings
-  /// Uses: GET {{baseUrl}}/api/photos
   Future<ApiResponse<List<Photo>>> getUserListings() async {
     try {
       _isLoading.value = true;
 
       print('🔄 Fetching user photos (listings)');
+      print('📍 Endpoint: ${ApiConfig.endpoints.photos}');
+      print(
+        '📍 Full URL: ${ApiConfig.fullApiUrl}${ApiConfig.endpoints.photos}',
+      );
+
+      final token = _authService.authToken;
+      print('🔑 Token available: ${token != null ? "YES" : "NO"}');
 
       final response = await makeApiRequest<List<Photo>>(
         method: 'GET',
         endpoint: ApiConfig.endpoints.photos,
         fromJson: (json) {
-          print('📦 Raw response type: ${json.runtimeType}');
+          print('📦 Raw response received');
+          print('📦 Response type: ${json.runtimeType}');
 
-          List<dynamic> photosList;
-          int total = 0;
+          List<dynamic> photosList = [];
 
           if (json is Map) {
             print('📦 Response is Map with keys: ${json.keys}');
 
             if (json.containsKey('totalPhotos')) {
-              total = json['totalPhotos'] as int? ?? 0;
-              print('✅ Total photos from API: $total');
+              _totalPhotos.value = json['totalPhotos'] as int? ?? 0;
+              print('✅ Total photos from API: ${_totalPhotos.value}');
             }
 
-            if (json.containsKey('data')) {
+            if (json.containsKey('data') && json['data'] is List) {
               photosList = json['data'] as List;
+              print('✅ Found data array with ${photosList.length} items');
+            } else if (json.containsKey('photos') && json['photos'] is List) {
+              photosList = json['photos'] as List;
+              print('✅ Found photos array with ${photosList.length} items');
+            } else if (json.containsKey('results') && json['results'] is List) {
+              photosList = json['results'] as List;
+              print('✅ Found results array with ${photosList.length} items');
             } else {
-              photosList = [];
+              print('❌ No data/photos/results array found');
+              print('📦 Response structure: ${json.keys}');
             }
           } else if (json is List) {
             photosList = json;
-            total = photosList.length;
-          } else {
-            photosList = [];
+            _totalPhotos.value = photosList.length;
+            print('✅ Response is direct array with ${photosList.length} items');
           }
 
-          print('✅ Listings loaded: ${photosList.length} photos');
+          print('🔄 Parsing ${photosList.length} photos...');
 
           final photos = <Photo>[];
           for (var i = 0; i < photosList.length; i++) {
             try {
-              final photo = Photo.fromJson(
-                photosList[i] as Map<String, dynamic>,
-              );
+              final photoData = photosList[i] as Map<String, dynamic>;
+              final photo = Photo.fromJson(photoData);
               photos.add(photo);
-              print(
-                '✅ Parsed photo ${i + 1}/${photosList.length}: ${photo.id}',
-              );
             } catch (e) {
-              print('⚠️ Error parsing photo at index $i: $e');
+              print('❌ Error parsing photo at index $i: $e');
             }
           }
 
-          print('✅ Successfully loaded ${photos.length} listings');
+          print('✅ Successfully parsed ${photos.length} listings');
           return photos;
         },
       );
@@ -124,11 +127,13 @@ class ListingService extends GetxService {
         print('✅ User photos updated: ${_userListings.length} items');
       } else {
         print('❌ Failed to load listings: ${response.error}');
+        print('❌ Status code: ${response.statusCode}');
       }
 
       return response;
-    } catch (e) {
+    } catch (e, stackTrace) {
       print('❌ Error fetching listings: $e');
+      print('❌ Stack trace: $stackTrace');
       return ApiResponse<List<Photo>>(
         success: false,
         error: 'Failed to get listings: $e',
@@ -138,10 +143,6 @@ class ListingService extends GetxService {
     }
   }
 
-  // ==================== GET LISTING BY ID ====================
-
-  /// Get specific photo by ID
-  /// Uses: GET {{baseUrl}}/api/photos/{{id}}
   Future<ApiResponse<Photo>> getListingById(String photoId) async {
     try {
       print('🔄 Fetching photo details: $photoId');
@@ -149,7 +150,12 @@ class ListingService extends GetxService {
       final response = await makeApiRequest<Photo>(
         method: 'GET',
         endpoint: ApiConfig.endpoints.photoById(photoId),
-        fromJson: (json) => Photo.fromJson(json),
+        fromJson: (json) {
+          if (json is Map && json.containsKey('data')) {
+            return Photo.fromJson(json['data'] as Map<String, dynamic>);
+          }
+          return Photo.fromJson(json as Map<String, dynamic>);
+        },
       );
 
       if (response.success && response.data != null) {
@@ -168,10 +174,6 @@ class ListingService extends GetxService {
     }
   }
 
-  // ==================== CREATE LISTING (UPLOAD PHOTO) ====================
-
-  /// Create a new listing (upload photo)
-  /// Uses: POST {{baseUrl}}/api/photos
   Future<ApiResponse<Photo>> createListing(UploadPhotoRequest request) async {
     try {
       print('🔄 Creating new listing (uploading photo)');
@@ -180,11 +182,17 @@ class ListingService extends GetxService {
         method: 'POST',
         endpoint: ApiConfig.endpoints.uploadPhoto,
         data: request.toJson(),
-        fromJson: (json) => Photo.fromJson(json),
+        fromJson: (json) {
+          if (json is Map && json.containsKey('data')) {
+            return Photo.fromJson(json['data'] as Map<String, dynamic>);
+          }
+          return Photo.fromJson(json as Map<String, dynamic>);
+        },
       );
 
       if (response.success && response.data != null) {
         _userListings.insert(0, response.data!);
+        _totalPhotos.value++;
         print('✅ Photo uploaded successfully');
       } else {
         print('❌ Failed to upload photo: ${response.error}');
@@ -200,10 +208,6 @@ class ListingService extends GetxService {
     }
   }
 
-  // ==================== UPDATE LISTING ====================
-
-  /// Update photo listing
-  /// Uses: PUT {{baseUrl}}/api/photos/{{id}}
   Future<ApiResponse<Photo>> updateListing(
     String photoId,
     UpdatePhotoRequest request,
@@ -215,7 +219,12 @@ class ListingService extends GetxService {
         method: 'PUT',
         endpoint: ApiConfig.endpoints.updatePhoto(photoId),
         data: request.toJson(),
-        fromJson: (json) => Photo.fromJson(json),
+        fromJson: (json) {
+          if (json is Map && json.containsKey('data')) {
+            return Photo.fromJson(json['data'] as Map<String, dynamic>);
+          }
+          return Photo.fromJson(json as Map<String, dynamic>);
+        },
       );
 
       if (response.success && response.data != null) {
@@ -235,10 +244,6 @@ class ListingService extends GetxService {
     }
   }
 
-  // ==================== DELETE LISTING ====================
-
-  /// Delete photo listing
-  /// Uses: DELETE {{baseUrl}}/api/photos/{{id}}
   Future<ApiResponse<void>> deleteListing(String photoId) async {
     try {
       print('🔄 Deleting listing: $photoId');
@@ -250,6 +255,7 @@ class ListingService extends GetxService {
 
       if (response.success) {
         _removeListingFromCache(photoId);
+        _totalPhotos.value--;
         print('✅ Photo deleted successfully');
       } else {
         print('❌ Failed to delete photo: ${response.error}');
@@ -265,10 +271,6 @@ class ListingService extends GetxService {
     }
   }
 
-  // ==================== SEARCH LISTINGS ====================
-
-  /// Search photos
-  /// Uses: GET {{baseUrl}}/api/photos/search-photos
   Future<ApiResponse<List<Photo>>> searchListings({
     String? creatorId,
     String? eventId,
@@ -279,7 +281,6 @@ class ListingService extends GetxService {
     try {
       print('🔄 Searching photos');
 
-      // Build query parameters
       final queryParams = <String, String>{};
       if (creatorId != null) queryParams['created_by'] = creatorId;
       if (eventId != null) queryParams['event_id'] = eventId;
@@ -291,20 +292,26 @@ class ListingService extends GetxService {
           .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
           .join('&');
 
-      final endpoint = '${ApiConfig.endpoints.searchPhotos}?$queryString';
+      final endpoint =
+          queryString.isEmpty
+              ? ApiConfig.endpoints.searchPhotos
+              : '${ApiConfig.endpoints.searchPhotos}?$queryString';
 
       final response = await makeApiRequest<List<Photo>>(
         method: 'GET',
         endpoint: endpoint,
         fromJson: (json) {
+          List<dynamic> photosList = [];
+
           if (json is List) {
-            return json.map((item) => Photo.fromJson(item)).toList();
+            photosList = json;
           } else if (json is Map && json['data'] is List) {
-            return (json['data'] as List)
-                .map((item) => Photo.fromJson(item))
-                .toList();
+            photosList = json['data'] as List;
           }
-          return <Photo>[];
+
+          return photosList
+              .map((item) => Photo.fromJson(item as Map<String, dynamic>))
+              .toList();
         },
       );
 
@@ -322,21 +329,16 @@ class ListingService extends GetxService {
     }
   }
 
-  // ==================== HELPER METHODS ====================
-
-  /// Load user listings
   Future<void> loadUserListings() async {
     await getUserListings();
   }
 
-  /// Refresh listings
   Future<void> refreshListings() async {
     _isRefreshing.value = true;
     await getUserListings();
     _isRefreshing.value = false;
   }
 
-  /// Update listing in cache
   void _updateListingInCache(Photo updatedPhoto) {
     final index = _userListings.indexWhere((p) => p.id == updatedPhoto.id);
     if (index != -1) {
@@ -344,25 +346,18 @@ class ListingService extends GetxService {
     }
   }
 
-  /// Remove listing from cache
   void _removeListingFromCache(String photoId) {
     _userListings.removeWhere((p) => p.id == photoId);
   }
 
-  /// Clear all listings
   void _clearListings() {
     _userListings.clear();
+    _totalPhotos.value = 0;
   }
 
-  /// Get listings count
   int get listingsCount => _userListings.length;
-
-  /// Check if has listings
   bool get hasListings => _userListings.isNotEmpty;
 
-  // ==================== API REQUEST METHOD ====================
-
-  /// Generic API request method
   Future<ApiResponse<T>> makeApiRequest<T>({
     required String method,
     required String endpoint,
@@ -373,11 +368,15 @@ class ListingService extends GetxService {
       final url = '${ApiConfig.fullApiUrl}$endpoint';
       final token = _authService.authToken;
 
+      print('🌐 Making $method request to: $url');
+
       if (token == null) {
+        print('❌ No authentication token available');
         return ApiResponse<T>(success: false, error: 'Authentication required');
       }
 
       final headers = ApiConfig.authHeaders(token);
+      print('📋 Request headers: ${headers.keys}');
 
       http.Response response;
 
@@ -406,14 +405,17 @@ class ListingService extends GetxService {
           throw Exception('Unsupported HTTP method: $method');
       }
 
+      print('📥 Response status: ${response.statusCode}');
+      print('📥 Response body length: ${response.body.length} bytes');
+
       return _handleResponse<T>(response, fromJson);
-    } catch (e) {
+    } catch (e, stackTrace) {
       print('❌ API request error: $e');
+      print('❌ Stack trace: $stackTrace');
       return ApiResponse<T>(success: false, error: 'Network error: $e');
     }
   }
 
-  /// Handle HTTP response
   ApiResponse<T> _handleResponse<T>(
     http.Response response,
     T Function(dynamic)? fromJson,
@@ -422,20 +424,36 @@ class ListingService extends GetxService {
       final statusCode = response.statusCode;
 
       if (statusCode >= 200 && statusCode < 300) {
-        final responseData = jsonDecode(response.body);
+        if (response.body.isEmpty) {
+          print('✅ Success with empty response');
+          return ApiResponse<T>(success: true, statusCode: statusCode);
+        }
 
-        dynamic dataToProcess;
+        final responseData = jsonDecode(response.body);
+        print('✅ Response decoded successfully');
+
+        dynamic dataToProcess = responseData;
+        String? message;
+
         if (responseData is Map<String, dynamic>) {
-          dataToProcess =
-              responseData['data'] ?? responseData['results'] ?? responseData;
-        } else {
-          dataToProcess = responseData;
+          message = responseData['message'] as String?;
+
+          // Try different data keys
+          if (responseData.containsKey('data')) {
+            dataToProcess = responseData['data'];
+          } else if (responseData.containsKey('results')) {
+            dataToProcess = responseData['results'];
+          } else if (responseData.containsKey('photos')) {
+            dataToProcess = responseData['photos'];
+          } else {
+            dataToProcess = responseData;
+          }
         }
 
         return ApiResponse<T>(
           success: true,
           statusCode: statusCode,
-          message: responseData is Map ? responseData['message'] : null,
+          message: message,
           data:
               fromJson != null && dataToProcess != null
                   ? fromJson(dataToProcess)
@@ -443,6 +461,8 @@ class ListingService extends GetxService {
         );
       }
 
+      // Handle error responses
+      print('❌ Error response: ${response.body}');
       final errorData = jsonDecode(response.body);
       return ApiResponse<T>(
         success: false,
@@ -451,6 +471,7 @@ class ListingService extends GetxService {
       );
     } catch (e) {
       print('❌ Error parsing response: $e');
+      print('❌ Response body: ${response.body}');
       return ApiResponse<T>(
         success: false,
         error: 'Failed to parse response: $e',

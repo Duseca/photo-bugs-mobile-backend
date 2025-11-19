@@ -1,442 +1,278 @@
-// ignore_for_file: unused_local_variable
+// controllers/add_listing_controller.dart
 
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:photo_bug/app/models/add_listings_model/add_listing_model.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:photo_bug/app/data/models/photo_model.dart';
+import 'package:photo_bug/app/services/photo_service/listing_service.dart';
+import 'dart:convert';
 
 class AddListingController extends GetxController {
+  late final ListingService _listingService;
+  final ImagePicker _imagePicker = ImagePicker();
+
   // Observable variables
-  final Rx<ListingType> currentTab = ListingType.creator.obs;
   final RxBool isLoading = false.obs;
-  final RxBool canPublish = false.obs;
+  final Rx<File?> selectedImage = Rx<File?>(null);
+  final RxString imagePreviewUrl = ''.obs;
 
   // Form controllers
-  final Map<String, TextEditingController> textControllers = {};
-  final Map<String, FocusNode> focusNodes = {};
-
-  // Tab list
-  final List<ListingType> tabs = [ListingType.creator, ListingType.hostedEvent];
+  final priceController = TextEditingController();
+  final categoryController = TextEditingController();
+  final tagsController = TextEditingController();
 
   @override
   void onInit() {
     super.onInit();
-    _initializeControllers();
+    _initializeService();
   }
 
   @override
   void onClose() {
-    _disposeControllers();
+    priceController.dispose();
+    categoryController.dispose();
+    tagsController.dispose();
     super.onClose();
   }
 
-  // Initialize text controllers
-  void _initializeControllers() {
-    final fields = [
-      // Common fields
-      'name',
-      'eventName',
-      'location',
-      'description',
-      'date',
-      'timeStart',
-      'timeEnd',
-      'keywords', 'email', 'phoneNumber', 'socialMediaLinks',
-      // Creator specific
-      'prices', 'experienceQualifications',
-      // Host event specific
-      'hostOrganizerName', 'expectedAttendees', 'budgetCompensation',
-      'specialRequirements', 'eventTheme', 'applicationDeadline',
-    ];
-
-    for (String field in fields) {
-      textControllers[field] = TextEditingController();
-      focusNodes[field] = FocusNode();
-
-      // Add listeners to validate form
-      textControllers[field]!.addListener(_validateForm);
+  void _initializeService() {
+    try {
+      _listingService = ListingService.instance;
+    } catch (e) {
+      print('❌ Error initializing ListingService: $e');
     }
   }
 
-  // Dispose controllers
-  void _disposeControllers() {
-    for (var controller in textControllers.values) {
-      controller.dispose();
-    }
-    for (var focusNode in focusNodes.values) {
-      focusNode.dispose();
+  // Pick image from gallery
+  Future<void> pickImageFromGallery() async {
+    try {
+      final XFile? image = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1920,
+        maxHeight: 1920,
+        imageQuality: 85,
+      );
+
+      if (image != null) {
+        selectedImage.value = File(image.path);
+        imagePreviewUrl.value = image.path;
+        print('✅ Image selected: ${image.path}');
+      }
+    } catch (e) {
+      print('❌ Error picking image: $e');
+      _showError('Failed to pick image');
     }
   }
 
-  // Switch tab
-  void switchTab(ListingType tab) {
-    currentTab.value = tab;
-    _validateForm();
+  // Pick image from camera
+  Future<void> pickImageFromCamera() async {
+    try {
+      final XFile? image = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1920,
+        maxHeight: 1920,
+        imageQuality: 85,
+      );
+
+      if (image != null) {
+        selectedImage.value = File(image.path);
+        imagePreviewUrl.value = image.path;
+        print('✅ Image captured: ${image.path}');
+      }
+    } catch (e) {
+      print('❌ Error capturing image: $e');
+      _showError('Failed to capture image');
+    }
+  }
+
+  // Show image picker dialog
+  void showImagePicker() {
+    Get.bottomSheet(
+      Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Select Image Source',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 20),
+            ListTile(
+              leading: const Icon(Icons.photo_library, color: Colors.blue),
+              title: const Text('Gallery'),
+              onTap: () {
+                Get.back();
+                pickImageFromGallery();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt, color: Colors.blue),
+              title: const Text('Camera'),
+              onTap: () {
+                Get.back();
+                pickImageFromCamera();
+              },
+            ),
+            if (selectedImage.value != null)
+              ListTile(
+                leading: const Icon(Icons.delete, color: Colors.red),
+                title: const Text('Remove Image'),
+                onTap: () {
+                  Get.back();
+                  removeImage();
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Remove selected image
+  void removeImage() {
+    selectedImage.value = null;
+    imagePreviewUrl.value = '';
   }
 
   // Validate form
-  void _validateForm() {
-    if (currentTab.value == ListingType.creator) {
-      canPublish.value = _validateCreatorForm();
-    } else {
-      canPublish.value = _validateHostEventForm();
-    }
-  }
-
-  // Validate creator form
-  bool _validateCreatorForm() {
-    return textControllers['name']!.text.isNotEmpty &&
-        textControllers['email']!.text.isNotEmpty &&
-        textControllers['location']!.text.isNotEmpty;
-  }
-
-  // Validate host event form
-  bool _validateHostEventForm() {
-    return textControllers['eventName']!.text.isNotEmpty &&
-        textControllers['email']!.text.isNotEmpty &&
-        textControllers['location']!.text.isNotEmpty;
-  }
-
-  // Publish listing
-  void publishListing() async {
-    if (!canPublish.value) {
-      Get.snackbar('Error', 'Please fill in all required fields');
-      return;
+  bool validateForm() {
+    if (selectedImage.value == null) {
+      _showError('Please select an image');
+      return false;
     }
 
-    isLoading.value = true;
+    if (priceController.text.isEmpty) {
+      _showError('Please enter price');
+      return false;
+    }
+
+    final price = double.tryParse(priceController.text);
+    if (price == null || price < 0) {
+      _showError('Please enter valid price');
+      return false;
+    }
+
+    if (categoryController.text.isEmpty) {
+      _showError('Please enter category');
+      return false;
+    }
+
+    return true;
+  }
+
+  // Upload photo
+  Future<void> uploadPhoto() async {
+    if (!validateForm()) return;
+
     try {
-      await Future.delayed(const Duration(seconds: 2)); // Simulate API call
+      isLoading.value = true;
 
-      if (currentTab.value == ListingType.creator) {
-        await _publishCreatorListing();
+      print('🔄 Starting photo upload...');
+
+      // Read image file
+      final imageFile = selectedImage.value!;
+      final bytes = await imageFile.readAsBytes();
+      final base64Image = base64Encode(bytes);
+
+      print('📦 Image size: ${bytes.length} bytes');
+      print('📦 Base64 length: ${base64Image.length}');
+
+      // Parse price
+      final price = double.parse(priceController.text);
+
+      // Parse tags
+      final tags =
+          tagsController.text
+              .split(',')
+              .map((t) => t.trim())
+              .where((t) => t.isNotEmpty)
+              .toList();
+
+      // Create metadata
+      final metadata = PhotoMetadata(
+        category: categoryController.text.trim(),
+        tags: tags.isNotEmpty ? tags : null,
+        fileName: imageFile.path.split('/').last,
+        fileSize: bytes.length,
+        mimeType: 'image/${imageFile.path.split('.').last}',
+      );
+
+      print('📝 Metadata: ${metadata.toJson()}');
+
+      // Create upload request
+      final request = UploadPhotoRequest(
+        file: base64Image,
+        price: price,
+        metadata: metadata,
+      );
+
+      print('🚀 Uploading photo...');
+
+      // Upload photo
+      final response = await _listingService.createListing(request);
+
+      if (response.success && response.data != null) {
+        print('✅ Photo uploaded successfully!');
+        _showSuccess('Photo uploaded successfully!');
+
+        // Clear form
+        _clearForm();
+
+        // Go back to listings
+        Get.back(result: true);
       } else {
-        await _publishHostEvent();
+        print('❌ Upload failed: ${response.error}');
+        _showError(response.error ?? 'Failed to upload photo');
       }
-
-      Get.snackbar('Success', 'Listing published successfully!');
-      Get.back();
-    } catch (e) {
-      Get.snackbar('Error', 'Failed to publish listing');
+    } catch (e, stackTrace) {
+      print('❌ Error uploading photo: $e');
+      print('❌ Stack trace: $stackTrace');
+      _showError('Failed to upload photo: $e');
     } finally {
       isLoading.value = false;
     }
   }
 
-  // Publish creator listing
-  Future<void> _publishCreatorListing() async {
-    final creatorListing = CreatorListing(
-      name: textControllers['name']!.text,
-      location: textControllers['location']!.text,
-      description: textControllers['description']!.text,
-      email: textControllers['email']!.text,
-      phoneNumber: textControllers['phoneNumber']!.text,
-      prices: textControllers['prices']!.text,
-      experienceQualifications:
-          textControllers['experienceQualifications']!.text,
-      keywords: _parseKeywords(textControllers['keywords']!.text),
-      servicesOffered: [], // Will be populated from bottom sheet selections
-      languagesSpoken: [], // Will be populated from dropdown
-      socialMediaLinks: _parseSocialLinks(
-        textControllers['socialMediaLinks']!.text,
-      ),
-      portfolioImages: [], // Will be populated from file uploads
+  // Clear form
+  void _clearForm() {
+    selectedImage.value = null;
+    imagePreviewUrl.value = '';
+    priceController.clear();
+    categoryController.clear();
+    tagsController.clear();
+  }
+
+  // Show success message
+  void _showSuccess(String message) {
+    Get.snackbar(
+      'Success',
+      message,
+      snackPosition: SnackPosition.BOTTOM,
+      backgroundColor: Colors.green,
+      colorText: Colors.white,
+      duration: const Duration(seconds: 2),
+      margin: const EdgeInsets.all(16),
+      icon: const Icon(Icons.check_circle, color: Colors.white),
     );
-
-    // Here you would make actual API call
-    // await listingService.createCreatorListing(creatorListing);
   }
 
-  // Publish host event
-  Future<void> _publishHostEvent() async {
-    final hostEvent = HostEvent(
-      eventName: textControllers['eventName']!.text,
-      location: textControllers['location']!.text,
-      description: textControllers['description']!.text,
-      hostOrganizerName: textControllers['hostOrganizerName']!.text,
-      email: textControllers['email']!.text,
-      phoneNumber: textControllers['phoneNumber']!.text,
-      expectedAttendees:
-          int.tryParse(textControllers['expectedAttendees']!.text) ?? 0,
-      budgetCompensation: textControllers['budgetCompensation']!.text,
-      specialRequirements: textControllers['specialRequirements']!.text,
-      eventTheme: textControllers['eventTheme']!.text,
-      keywords: _parseKeywords(textControllers['keywords']!.text),
-      eventTypes: [], // Will be populated from bottom sheet selections
-      servicesNeeded: [], // Will be populated from bottom sheet selections
-      socialMediaLinks: _parseSocialLinks(
-        textControllers['socialMediaLinks']!.text,
-      ),
+  // Show error message
+  void _showError(String message) {
+    Get.snackbar(
+      'Error',
+      message,
+      snackPosition: SnackPosition.BOTTOM,
+      backgroundColor: Colors.red,
+      colorText: Colors.white,
+      duration: const Duration(seconds: 3),
+      margin: const EdgeInsets.all(16),
+      icon: const Icon(Icons.error, color: Colors.white),
     );
-
-    // Here you would make actual API call
-    // await listingService.createHostEvent(hostEvent);
-  }
-
-  // Parse keywords from comma-separated string
-  List<String> _parseKeywords(String keywords) {
-    return keywords
-        .split(',')
-        .map((k) => k.trim())
-        .where((k) => k.isNotEmpty)
-        .toList();
-  }
-
-  // Parse social media links
-  List<String> _parseSocialLinks(String links) {
-    return links
-        .split('\n')
-        .map((l) => l.trim())
-        .where((l) => l.isNotEmpty)
-        .toList();
-  }
-
-  // Get text controller
-  TextEditingController getController(String field) {
-    return textControllers[field] ?? TextEditingController();
-  }
-
-  // Get focus node
-  FocusNode getFocusNode(String field) {
-    return focusNodes[field] ?? FocusNode();
-  }
-}
-
-// controllers/event_type_controller.dart
-class EventTypeController extends GetxController {
-  // Observable variables
-  final RxList<ServiceCategory> eventCategories = <ServiceCategory>[].obs;
-  final RxList<String> selectedEventTypes = <String>[].obs;
-  final RxString searchQuery = ''.obs;
-  final RxString otherEventType = ''.obs;
-
-  // Text controller for other field
-  final TextEditingController otherController = TextEditingController();
-
-  @override
-  void onInit() {
-    super.onInit();
-    loadEventTypes();
-  }
-
-  @override
-  void onClose() {
-    otherController.dispose();
-    super.onClose();
-  }
-
-  // Load event types from utils
-  void loadEventTypes() {
-    // This would come from your eventTypes utils file
-    final sampleEventTypes = [
-      ServiceCategory(
-        title: 'Social Events',
-        items: ['Wedding', 'Birthday Party', 'Anniversary', 'Baby Shower'],
-      ),
-      ServiceCategory(
-        title: 'Corporate Events',
-        items: ['Conference', 'Team Building', 'Product Launch', 'Networking'],
-      ),
-      ServiceCategory(
-        title: 'Entertainment',
-        items: ['Concert', 'Festival', 'Theater', 'Comedy Show'],
-      ),
-    ];
-
-    eventCategories.assignAll(sampleEventTypes);
-  }
-
-  // Toggle event type selection
-  void toggleEventType(String eventType) {
-    if (selectedEventTypes.contains(eventType)) {
-      selectedEventTypes.remove(eventType);
-    } else {
-      selectedEventTypes.add(eventType);
-    }
-  }
-
-  // Search event types
-  void searchEventTypes(String query) {
-    searchQuery.value = query;
-    // Implement search logic if needed
-  }
-
-  // Add other event type
-  void addOtherEventType() {
-    final other = otherController.text.trim();
-    if (other.isNotEmpty && !selectedEventTypes.contains(other)) {
-      selectedEventTypes.add(other);
-      otherController.clear();
-    }
-  }
-
-  // Get filtered categories based on search
-  List<ServiceCategory> get filteredCategories {
-    if (searchQuery.value.isEmpty) return eventCategories;
-
-    return eventCategories
-        .map((category) {
-          final filteredItems =
-              category.items
-                  .where(
-                    (item) => item.toLowerCase().contains(
-                      searchQuery.value.toLowerCase(),
-                    ),
-                  )
-                  .toList();
-
-          return ServiceCategory(title: category.title, items: filteredItems);
-        })
-        .where((category) => category.items.isNotEmpty)
-        .toList();
-  }
-
-  // Continue with selection
-  void continueWithSelection() {
-    if (otherController.text.trim().isNotEmpty) {
-      addOtherEventType();
-    }
-    Get.back(result: selectedEventTypes.toList());
-  }
-}
-
-// controllers/services_controller.dart
-class ServicesController extends GetxController {
-  // Observable variables
-  final RxList<ServiceCategory> serviceCategories = <ServiceCategory>[].obs;
-  final RxList<String> selectedServices = <String>[].obs;
-  final RxString searchQuery = ''.obs;
-  final RxString serviceType = ''.obs; // 'needed' or 'offered'
-
-  // Text controller for other field
-  final TextEditingController otherController = TextEditingController();
-
-  @override
-  void onInit() {
-    super.onInit();
-    final arguments = Get.arguments;
-    serviceType.value = arguments?['type'] ?? 'needed';
-    loadServices();
-  }
-
-  @override
-  void onClose() {
-    otherController.dispose();
-    super.onClose();
-  }
-
-  // Load services based on type
-  void loadServices() {
-    List<ServiceCategory> services;
-
-    if (serviceType.value == 'offered') {
-      services = _getServicesOffered();
-    } else {
-      services = _getServicesNeeded();
-    }
-
-    serviceCategories.assignAll(services);
-  }
-
-  // Get services offered data
-  List<ServiceCategory> _getServicesOffered() {
-    return [
-      ServiceCategory(
-        title: 'Photography',
-        items: [
-          'Wedding Photography',
-          'Portrait Photography',
-          'Event Photography',
-          'Product Photography',
-        ],
-      ),
-      ServiceCategory(
-        title: 'Videography',
-        items: [
-          'Wedding Videography',
-          'Corporate Videos',
-          'Music Videos',
-          'Documentary',
-        ],
-      ),
-      ServiceCategory(
-        title: 'Design',
-        items: ['Graphic Design', 'Web Design', 'Logo Design', 'UI/UX Design'],
-      ),
-    ];
-  }
-
-  // Get services needed data
-  List<ServiceCategory> _getServicesNeeded() {
-    return [
-      ServiceCategory(
-        title: 'Creative Services',
-        items: ['Photographer', 'Videographer', 'DJ', 'MC/Host'],
-      ),
-      ServiceCategory(
-        title: 'Technical Services',
-        items: [
-          'Sound Engineer',
-          'Lighting Technician',
-          'Video Editor',
-          'Live Streaming',
-        ],
-      ),
-      ServiceCategory(
-        title: 'Event Services',
-        items: ['Event Coordinator', 'Decorator', 'Catering', 'Security'],
-      ),
-    ];
-  }
-
-  // Toggle service selection
-  void toggleService(String service) {
-    if (selectedServices.contains(service)) {
-      selectedServices.remove(service);
-    } else {
-      selectedServices.add(service);
-    }
-  }
-
-  // Search services
-  void searchServices(String query) {
-    searchQuery.value = query;
-  }
-
-  // Add other service
-  void addOtherService() {
-    final other = otherController.text.trim();
-    if (other.isNotEmpty && !selectedServices.contains(other)) {
-      selectedServices.add(other);
-      otherController.clear();
-    }
-  }
-
-  // Get filtered categories
-  List<ServiceCategory> get filteredCategories {
-    if (searchQuery.value.isEmpty) return serviceCategories;
-
-    return serviceCategories
-        .map((category) {
-          final filteredItems =
-              category.items
-                  .where(
-                    (item) => item.toLowerCase().contains(
-                      searchQuery.value.toLowerCase(),
-                    ),
-                  )
-                  .toList();
-
-          return ServiceCategory(title: category.title, items: filteredItems);
-        })
-        .where((category) => category.items.isNotEmpty)
-        .toList();
-  }
-
-  // Continue with selection
-  void continueWithSelection() {
-    if (otherController.text.trim().isNotEmpty) {
-      addOtherService();
-    }
-    Get.back(result: selectedServices.toList());
   }
 }

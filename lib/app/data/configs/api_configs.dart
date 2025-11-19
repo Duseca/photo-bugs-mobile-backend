@@ -95,6 +95,7 @@ class _ApiEndpoints {
   // Email and verification
   String get sendEmail => '$users/send-email';
   String get verifyEmail => '$users/verify-email';
+  String get generateTokens => '$users/generate-tokens';
 
   // User profile and info
   String get currentUser => '$users/me';

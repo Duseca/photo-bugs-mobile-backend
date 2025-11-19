@@ -1,4 +1,4 @@
-// modules/listing/views/listing_details.dart
+// views/listing_details.dart
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -99,26 +99,21 @@ class ListingDetails extends GetView<ListingDetailsController> {
   }
 
   Widget _buildBody() {
-    // Loading state
     if (controller.isLoading.value && !controller.hasPhoto) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    // Error state
     if (controller.errorMessage.isNotEmpty && !controller.hasPhoto) {
       return _buildErrorState();
     }
 
-    // No photo state
     if (!controller.hasPhoto) {
       return _buildNoPhotoState();
     }
 
-    // Success state with photo details
     final photo = controller.photo.value!;
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Expanded(
           child: ListView(
@@ -133,6 +128,7 @@ class ListingDetails extends GetView<ListingDetailsController> {
               _buildMetadataSection(photo),
               const SizedBox(height: 16),
               if (photo.creator != null) _buildCreatorSection(photo.creator!),
+              const SizedBox(height: 80),
             ],
           ),
         ),
@@ -157,11 +153,13 @@ class ListingDetails extends GetView<ListingDetailsController> {
           const SizedBox(height: 8),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32),
-            child: MyText(
-              text: controller.errorMessage.value,
-              size: 14,
-              color: Colors.grey,
-              textAlign: TextAlign.center,
+            child: Obx(
+              () => MyText(
+                text: controller.errorMessage.value,
+                size: 14,
+                color: Colors.grey,
+                textAlign: TextAlign.center,
+              ),
             ),
           ),
           const SizedBox(height: 24),
@@ -204,12 +202,12 @@ class ListingDetails extends GetView<ListingDetailsController> {
   }
 
   Widget _buildImage(Photo photo) {
-    final imageUrl = photo.url ?? photo.watermarkedUrl ?? photo.thumbnailUrl;
+    final imageUrl = photo.displayUrl;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child:
-          imageUrl != null && imageUrl.isNotEmpty
+          imageUrl.isNotEmpty
               ? CommonImageView(url: imageUrl, height: 300, fit: BoxFit.cover)
               : Container(
                 height: 300,
@@ -426,17 +424,16 @@ class ListingDetails extends GetView<ListingDetailsController> {
               label: 'Location',
               value: metadata.location!,
             ),
-            const SizedBox(height: 8),
           ],
           if (metadata.tags != null && metadata.tags!.isNotEmpty) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             MyText(
               text: 'Tags',
               size: 12,
               weight: FontWeight.w600,
               color: kQuaternaryColor,
+              paddingBottom: 8,
             ),
-            const SizedBox(height: 8),
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -520,12 +517,33 @@ class ListingDetails extends GetView<ListingDetailsController> {
                       size: 15,
                       weight: FontWeight.w600,
                     ),
-                    const SizedBox(height: 4),
-                    MyText(
-                      text: 'Creator ID: ${creator.id ?? 'N/A'}',
-                      size: 11,
-                      color: kQuaternaryColor,
-                    ),
+                    if (creator.userName != null) ...[
+                      const SizedBox(height: 4),
+                      MyText(
+                        text: '@${creator.userName}',
+                        size: 12,
+                        color: kQuaternaryColor,
+                      ),
+                    ],
+                    if (creator.role != null) ...[
+                      const SizedBox(height: 2),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: kSecondaryColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: MyText(
+                          text: creator.role!.toUpperCase(),
+                          size: 10,
+                          color: kSecondaryColor,
+                          weight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -612,12 +630,14 @@ class ListingDetails extends GetView<ListingDetailsController> {
 
   String _formatDate(DateTime? date) {
     if (date == null) return 'N/A';
-    return DateFormat('MMM dd, yyyy HH:mm').format(date);
+    return DateFormat('MMM dd, yyyy • HH:mm').format(date);
   }
 
   String _formatFileSize(int bytes) {
     if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024) {
+      return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    }
     if (bytes < 1024 * 1024 * 1024) {
       return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
     }
@@ -634,8 +654,6 @@ class ListingDetails extends GetView<ListingDetailsController> {
         return 'Archived';
       case PhotoStatus.deleted:
         return 'Deleted';
-      default:
-        return 'Unknown';
     }
   }
 
@@ -649,8 +667,6 @@ class ListingDetails extends GetView<ListingDetailsController> {
         return Colors.blue;
       case PhotoStatus.deleted:
         return Colors.red;
-      default:
-        return Colors.grey;
     }
   }
 }
