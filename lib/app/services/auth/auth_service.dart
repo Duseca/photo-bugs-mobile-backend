@@ -1317,7 +1317,6 @@ class AuthService extends GetxService {
 
       final tokens = GoogleTokens(
         accessToken: accessToken ?? '',
-
         expiryDate:
             DateTime.now().add(const Duration(hours: 1)).millisecondsSinceEpoch,
       );

@@ -366,31 +366,123 @@ class AddRecipientsRequest {
   }
 }
 
+/// Event Search Parameters - COMPLETE VERSION
 class EventSearchParams {
   final Location? location;
   final String? role;
   final String? type;
   final double? distance;
+  final String? name; // Add name/query parameter
+  final String? status; // Optional: search by status
+  final DateTime? startDate; // Optional: search by date range
+  final DateTime? endDate; // Optional: search by date range
+  final bool? matureContent; // Optional: filter mature content
 
-  EventSearchParams({this.location, this.role, this.type, this.distance});
+  const EventSearchParams({
+    this.location,
+    this.role,
+    this.type,
+    this.distance,
+    this.name,
+    this.status,
+    this.startDate,
+    this.endDate,
+    this.matureContent,
+  });
 
+  /// Convert to query parameters for API request
   Map<String, String> toQueryParams() {
-    final params = <String, String>{};
+    final Map<String, String> params = {};
 
+    // Location parameters
     if (location != null) {
       params['location'] = '${location!.longitude},${location!.latitude}';
     }
-    if (role != null) {
+
+    // Role filter
+    if (role != null && role!.isNotEmpty) {
       params['role'] = role!;
     }
-    if (type != null) {
+
+    // Type filter
+    if (type != null && type!.isNotEmpty) {
       params['type'] = type!;
     }
-    if (distance != null) {
+
+    // Distance/radius filter
+    if (distance != null && distance! > 0) {
       params['distance'] = distance!.toString();
     }
 
+    // Name/query search
+    if (name != null && name!.isNotEmpty) {
+      params['name'] = name!;
+    }
+
+    // Status filter
+    if (status != null && status!.isNotEmpty) {
+      params['status'] = status!;
+    }
+
+    // Date range filters
+    if (startDate != null) {
+      params['startDate'] = startDate!.toIso8601String();
+    }
+    if (endDate != null) {
+      params['endDate'] = endDate!.toIso8601String();
+    }
+
+    // Mature content filter
+    if (matureContent != null) {
+      params['matureContent'] = matureContent!.toString();
+    }
+
     return params;
+  }
+
+  /// Create a copy with updated parameters
+  EventSearchParams copyWith({
+    Location? location,
+    String? role,
+    String? type,
+    double? distance,
+    String? name,
+    String? status,
+    DateTime? startDate,
+    DateTime? endDate,
+    bool? matureContent,
+  }) {
+    return EventSearchParams(
+      location: location ?? this.location,
+      role: role ?? this.role,
+      type: type ?? this.type,
+      distance: distance ?? this.distance,
+      name: name ?? this.name,
+      status: status ?? this.status,
+      startDate: startDate ?? this.startDate,
+      endDate: endDate ?? this.endDate,
+      matureContent: matureContent ?? this.matureContent,
+    );
+  }
+
+  /// Check if any search parameters are set
+  bool get hasFilters {
+    return location != null ||
+        (role != null && role!.isNotEmpty) ||
+        (type != null && type!.isNotEmpty) ||
+        (distance != null && distance! > 0) ||
+        (name != null && name!.isNotEmpty) ||
+        (status != null && status!.isNotEmpty) ||
+        startDate != null ||
+        endDate != null ||
+        matureContent != null;
+  }
+
+  @override
+  String toString() {
+    return 'EventSearchParams(location: $location, role: $role, type: $type, '
+        'distance: $distance, name: $name, status: $status, '
+        'startDate: $startDate, endDate: $endDate, matureContent: $matureContent)';
   }
 }
 

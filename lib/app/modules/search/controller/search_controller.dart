@@ -1,4 +1,4 @@
-// modules/search/controllers/search_controller.dart
+// modules/search/controllers/search_controller.dart - UPDATED COMPLETE VERSION
 
 import 'dart:async';
 
@@ -28,6 +28,14 @@ class SearchController extends GetxController {
   final RxString roleFilter = ''.obs;
   final Rx<RangeValues> radiusRange = const RangeValues(0, 50).obs;
   final RxInt selectedRating = 0.obs;
+  final RxString statusFilter = ''.obs; // New: Status filter
+  final Rx<DateTime?> startDateFilter = Rx<DateTime?>(
+    null,
+  ); // New: Start date filter
+  final Rx<DateTime?> endDateFilter = Rx<DateTime?>(
+    null,
+  ); // New: End date filter
+  final RxBool matureContentFilter = false.obs; // New: Mature content filter
 
   // Text controllers
   final TextEditingController searchTextController = TextEditingController();
@@ -49,6 +57,14 @@ class SearchController extends GetxController {
     'Event Photographer',
   ];
 
+  final List<String> statusOptions = [
+    'pending',
+    'confirmed',
+    'ongoing',
+    'completed',
+    'cancelled',
+  ];
+
   // Current user location (can be set from GPS)
   Location? currentLocation;
 
@@ -66,6 +82,7 @@ class SearchController extends GetxController {
   void onClose() {
     searchTextController.dispose();
     locationController.dispose();
+    _searchDebounceTimer?.cancel();
     super.onClose();
   }
 
@@ -132,11 +149,12 @@ class SearchController extends GetxController {
     try {
       isSearching.value = true;
 
-      // Use API search if we have location/role/type filters
+      // ALWAYS use API search when any filter is active or search query exists
+      // This ensures we send the complete query to the backend
       if (_shouldUseApiSearch()) {
         await _performApiSearch();
       } else {
-        // Use local filtering for text search only
+        // Use local filtering only when no filters and just browsing
         _applyLocalFilters();
       }
     } catch (e) {
@@ -151,10 +169,17 @@ class SearchController extends GetxController {
   bool _shouldUseApiSearch() {
     return locationFilter.value.isNotEmpty ||
         roleFilter.value.isNotEmpty ||
-        typeFilter.value.isNotEmpty;
+        typeFilter.value.isNotEmpty ||
+        statusFilter.value.isNotEmpty ||
+        startDateFilter.value != null ||
+        endDateFilter.value != null ||
+        searchQuery
+            .value
+            .isNotEmpty || // IMPORTANT: Also use API for text search
+        radiusRange.value.end < 50; // If radius is adjusted
   }
 
-  /// Perform API search with filters
+  /// Perform API search with filters - COMPLETE IMPLEMENTATION
   Future<void> _performApiSearch() async {
     // Parse location coordinates from locationController
     Location? searchLocation;
@@ -162,25 +187,37 @@ class SearchController extends GetxController {
       searchLocation = _parseLocationFromText(locationFilter.value);
     }
 
+    // Build complete search parameters
     final searchParams = EventSearchParams(
+      // Location-based search
       location: searchLocation,
+      distance: radiusRange.value.end > 0 ? radiusRange.value.end : null,
+
+      // Filter parameters
       role: roleFilter.value.isNotEmpty ? roleFilter.value : null,
       type: typeFilter.value.isNotEmpty ? typeFilter.value : null,
-      distance: radiusRange.value.end > 0 ? radiusRange.value.end : null,
+      status: statusFilter.value.isNotEmpty ? statusFilter.value : null,
+
+      // Text search parameter - THIS IS CRITICAL
+      name: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+
+      // Date range filters
+      startDate: startDateFilter.value,
+      endDate: endDateFilter.value,
+
+      // Content filter
+      matureContent: matureContentFilter.value ? true : null,
     );
 
-    print('🔍 Searching with params: ${searchParams.toQueryParams()}');
+    print('🔍 Searching with complete params: ${searchParams.toQueryParams()}');
+    print('🔍 Query String will be: ${_buildQueryString(searchParams)}');
 
     final response = await _eventService.searchEvents(searchParams);
 
     if (response.success && response.data != null) {
       List<Event> results = response.data!;
 
-      // Apply text search filter locally on API results
-      if (searchQuery.value.isNotEmpty) {
-        results = _filterByQuery(results);
-      }
-
+      // Results are already filtered by backend, no need for local filtering
       searchResults.assignAll(results);
       resultsCount.value = results.length;
 
@@ -192,7 +229,15 @@ class SearchController extends GetxController {
     }
   }
 
-  /// Apply filters locally on cached events
+  /// Build query string for debugging (helper method)
+  String _buildQueryString(EventSearchParams params) {
+    final queryParams = params.toQueryParams();
+    return queryParams.entries
+        .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
+        .join('&');
+  }
+
+  /// Apply filters locally on cached events (only for browsing without filters)
   void _applyLocalFilters() {
     List<Event> filtered = List.from(allEvents);
 
@@ -223,6 +268,18 @@ class SearchController extends GetxController {
               .toList();
     }
 
+    // Filter by status
+    if (statusFilter.value.isNotEmpty) {
+      filtered =
+          filtered
+              .where(
+                (event) =>
+                    event.status.value.toLowerCase() ==
+                    statusFilter.value.toLowerCase(),
+              )
+              .toList();
+    }
+
     searchResults.assignAll(filtered);
     resultsCount.value = filtered.length;
   }
@@ -241,15 +298,17 @@ class SearchController extends GetxController {
     }).toList();
   }
 
-  /// Parse location from text (expects format: "lat,lng")
+  /// Parse location from text (expects format: "lng,lat" or "lat,lng")
   Location? _parseLocationFromText(String text) {
     try {
       final parts = text.split(',');
       if (parts.length == 2) {
-        final lat = double.parse(parts[0].trim());
-        final lng = double.parse(parts[1].trim());
-        // Use the factory method that accepts longitude, latitude in correct order
-        return Location.fromCoordinates(lng, lat);
+        final first = double.parse(parts[0].trim());
+        final second = double.parse(parts[1].trim());
+
+        // Assuming user enters as "lng,lat" format based on your example
+        // If your backend expects "lat,lng", swap these
+        return Location.fromCoordinates(first, second);
       }
     } catch (e) {
       print('❌ Failed to parse location: $e');
@@ -273,8 +332,12 @@ class SearchController extends GetxController {
     locationFilter.value = '';
     typeFilter.value = '';
     roleFilter.value = '';
+    statusFilter.value = '';
     radiusRange.value = const RangeValues(0, 50);
     selectedRating.value = 0;
+    startDateFilter.value = null;
+    endDateFilter.value = null;
+    matureContentFilter.value = false;
 
     locationController.clear();
     searchTextController.clear();
@@ -288,8 +351,12 @@ class SearchController extends GetxController {
     return locationFilter.value.isNotEmpty ||
         typeFilter.value.isNotEmpty ||
         roleFilter.value.isNotEmpty ||
+        statusFilter.value.isNotEmpty ||
         radiusRange.value.start != 0 ||
-        radiusRange.value.end != 50;
+        radiusRange.value.end != 50 ||
+        startDateFilter.value != null ||
+        endDateFilter.value != null ||
+        matureContentFilter.value;
   }
 
   /// Set type filter
@@ -302,6 +369,11 @@ class SearchController extends GetxController {
     roleFilter.value = role ?? '';
   }
 
+  /// Set status filter
+  void setStatusFilter(String? status) {
+    statusFilter.value = status ?? '';
+  }
+
   /// Set radius range
   void setRadiusRange(RangeValues range) {
     radiusRange.value = range;
@@ -310,6 +382,21 @@ class SearchController extends GetxController {
   /// Set selected rating
   void setSelectedRating(int rating) {
     selectedRating.value = rating;
+  }
+
+  /// Set start date filter
+  void setStartDateFilter(DateTime? date) {
+    startDateFilter.value = date;
+  }
+
+  /// Set end date filter
+  void setEndDateFilter(DateTime? date) {
+    endDateFilter.value = date;
+  }
+
+  /// Toggle mature content filter
+  void toggleMatureContentFilter(bool value) {
+    matureContentFilter.value = value;
   }
 
   /// Navigate to search details
@@ -335,6 +422,20 @@ class SearchController extends GetxController {
 
   /// Get formatted results text
   String get resultsText => '${resultsCount.value} results found';
+
+  /// Get active filter count
+  int get activeFilterCount {
+    int count = 0;
+    if (locationFilter.value.isNotEmpty) count++;
+    if (typeFilter.value.isNotEmpty) count++;
+    if (roleFilter.value.isNotEmpty) count++;
+    if (statusFilter.value.isNotEmpty) count++;
+    if (radiusRange.value.end < 50) count++;
+    if (startDateFilter.value != null) count++;
+    if (endDateFilter.value != null) count++;
+    if (matureContentFilter.value) count++;
+    return count;
+  }
 
   /// Show success message
   void _showSuccess(String message) {
@@ -467,8 +568,6 @@ class SearchDetailsController extends GetxController {
   }
 
   // ==================== GETTERS ====================
-
-  /// Get recipient images
 
   /// Get recipient count
   int get recipientCount => eventDetails.value?.recipients?.length ?? 0;
