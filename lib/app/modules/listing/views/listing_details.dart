@@ -513,7 +513,7 @@ class ListingDetails extends GetView<ListingDetailsController> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     MyText(
-                      text: creator.name ?? 'Unknown Creator',
+                      text: creator.email ?? 'Unknown Creator',
                       size: 15,
                       weight: FontWeight.w600,
                     ),

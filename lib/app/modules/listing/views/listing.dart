@@ -19,7 +19,7 @@ class Listing extends GetView<ListingController> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: simpleAppBar(title: 'Listings'),
-      floatingActionButton: _buildFloatingActionButton(),
+
       body: _buildBody(),
     );
   }
