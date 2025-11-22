@@ -8,7 +8,6 @@ import 'package:photo_bug/app/core/constants/app_images.dart';
 import 'package:photo_bug/app/core/constants/app_sizes.dart';
 import 'package:photo_bug/app/data/models/event_model.dart';
 import 'package:photo_bug/app/data/models/folder_model.dart';
-
 import 'package:photo_bug/app/core/common_widget/common_image_view_widget.dart';
 import 'package:photo_bug/app/core/common_widget/my_button_widget.dart';
 import 'package:photo_bug/app/core/common_widget/my_text_widget.dart';
@@ -25,9 +24,15 @@ class UserEventDetails extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = Get.put(UserEventDetailsController());
 
-    return Scaffold(
-      appBar: _buildAppBar(controller),
-      body: Obx(() => _buildBody(controller)),
+    return WillPopScope(
+      onWillPop: () async {
+        // Clean up when back button is pressed
+        return true;
+      },
+      child: Scaffold(
+        appBar: _buildAppBar(controller),
+        body: _buildBodyWrapper(controller),
+      ),
     );
   }
 
@@ -39,7 +44,11 @@ class UserEventDetails extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             GestureDetector(
-              onTap: controller.shareEvent,
+              onTap: () {
+                if (controller.event.value != null) {
+                  controller.shareEvent();
+                }
+              },
               child: Image.asset(Assets.imagesShare, height: 20),
             ),
           ],
@@ -49,15 +58,21 @@ class UserEventDetails extends StatelessWidget {
     );
   }
 
+  Widget _buildBodyWrapper(UserEventDetailsController controller) {
+    return Obx(() {
+      if (controller.isLoading.value && controller.event.value == null) {
+        return const Center(child: CircularProgressIndicator());
+      }
+
+      if (controller.event.value == null) {
+        return _buildErrorState();
+      }
+
+      return _buildBody(controller);
+    });
+  }
+
   Widget _buildBody(UserEventDetailsController controller) {
-    if (controller.isLoading.value && controller.event.value == null) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (controller.event.value == null) {
-      return _buildErrorState();
-    }
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -66,6 +81,7 @@ class UserEventDetails extends StatelessWidget {
             onRefresh: controller.refreshEventDetails,
             child: ListView(
               padding: AppSizes.DEFAULT,
+              physics: const AlwaysScrollableScrollPhysics(),
               children: [
                 _buildEventImage(controller),
                 const SizedBox(height: 12),
@@ -76,6 +92,7 @@ class UserEventDetails extends StatelessWidget {
                 _buildEventTimings(controller),
                 if (controller.hasTimings) _buildDivider(),
                 _buildFoldersSection(controller),
+                const SizedBox(height: 20), // Extra padding at bottom
               ],
             ),
           ),
@@ -127,7 +144,9 @@ class UserEventDetails extends StatelessWidget {
 
   Widget _buildEventInfo(UserEventDetailsController controller) {
     return Obx(() {
-      final event = controller.event.value!;
+      final event = controller.event.value;
+      if (event == null) return const SizedBox.shrink();
+
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -309,7 +328,9 @@ class UserEventDetails extends StatelessWidget {
     return Obx(() {
       if (!controller.hasTimings) return const SizedBox.shrink();
 
-      final event = controller.event.value!;
+      final event = controller.event.value;
+      if (event == null) return const SizedBox.shrink();
+
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -374,7 +395,11 @@ class UserEventDetails extends StatelessWidget {
               ),
               if (controller.isMyEvent.value)
                 GestureDetector(
-                  onTap: controller.showCreateFolderDialog,
+                  onTap: () {
+                    if (controller.event.value != null) {
+                      controller.showCreateFolderDialog();
+                    }
+                  },
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 10,
@@ -460,7 +485,11 @@ class UserEventDetails extends StatelessWidget {
     final totalItems = photoCount + bundleCount;
 
     return GestureDetector(
-      onTap: () => controller.navigateToFolderDetails(folder),
+      onTap: () {
+        if (controller.event.value != null) {
+          controller.navigateToFolderDetails(folder);
+        }
+      },
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -526,47 +555,51 @@ class UserEventDetails extends StatelessWidget {
             ),
           ],
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Pending invitation actions
-            if (!controller.isMyEvent.value &&
-                event.status == EventStatus.pending)
-              Row(
-                children: [
-                  Expanded(
-                    child: MyButton(
-                      buttonText: 'Decline',
-                      bgColor: Colors.transparent,
-                      textColor: Colors.red,
-                      borderWidth: 1,
-                      borderColor: Colors.red,
-                      onTap: () => _showDeclineDialog(controller),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Pending invitation actions
+              if (!controller.isMyEvent.value &&
+                  event.status == EventStatus.pending)
+                Row(
+                  children: [
+                    Expanded(
+                      child: MyButton(
+                        buttonText: 'Decline',
+                        bgColor: Colors.transparent,
+                        textColor: Colors.red,
+                        borderWidth: 1,
+                        borderColor: Colors.red,
+                        onTap: () => _showDeclineDialog(controller),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: MyButton(
-                      buttonText: 'Accept',
-                      onTap: controller.acceptEventInvitation,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: MyButton(
+                        buttonText: 'Accept',
+                        onTap: controller.acceptEventInvitation,
+                      ),
                     ),
-                  ),
-                ],
-              )
-            // Delete event button (for my events)
-            else if (controller.isMyEvent.value)
-              MyButton(
-                buttonText: 'Delete Event',
-                bgColor: Colors.red,
-                onTap: () => _showDeleteDialog(controller),
-              ),
-          ],
+                  ],
+                )
+              // Delete event button (for my events)
+              else if (controller.isMyEvent.value)
+                MyButton(
+                  buttonText: 'Delete Event',
+                  bgColor: Colors.red,
+                  onTap: () => _showDeleteDialog(controller),
+                ),
+            ],
+          ),
         ),
       );
     });
   }
 
   void _showDeclineDialog(UserEventDetailsController controller) {
+    if (controller.event.value == null) return;
+
     Get.dialog(
       AlertDialog(
         title: const Text('Decline Invitation'),
@@ -578,7 +611,9 @@ class UserEventDetails extends StatelessWidget {
           TextButton(
             onPressed: () {
               Get.back();
-              controller.declineEventInvitation();
+              Future.delayed(const Duration(milliseconds: 300), () {
+                controller.declineEventInvitation();
+              });
             },
             child: const Text('Decline', style: TextStyle(color: Colors.red)),
           ),
@@ -588,6 +623,8 @@ class UserEventDetails extends StatelessWidget {
   }
 
   void _showDeleteDialog(UserEventDetailsController controller) {
+    if (controller.event.value == null) return;
+
     Get.dialog(
       AlertDialog(
         title: const Text('Delete Event'),
@@ -599,7 +636,9 @@ class UserEventDetails extends StatelessWidget {
           TextButton(
             onPressed: () {
               Get.back();
-              controller.deleteEvent();
+              Future.delayed(const Duration(milliseconds: 300), () {
+                controller.deleteEvent();
+              });
             },
             child: const Text('Delete', style: TextStyle(color: Colors.red)),
           ),
@@ -649,77 +688,4 @@ class UserEventDetails extends StatelessWidget {
         return Colors.red;
     }
   }
-}
-
-// ==================== CREATE FOLDER DIALOG ====================
-
-void showCreateFolderDialog(
-  BuildContext context,
-  String eventId,
-  Function(String) onCreateFolder,
-) {
-  final folderNameController = TextEditingController();
-  final formKey = GlobalKey<FormState>();
-
-  Get.dialog(
-    AlertDialog(
-      title: Row(
-        children: [
-          Icon(Icons.create_new_folder, color: kSecondaryColor, size: 24),
-          const SizedBox(width: 8),
-          const Text('Create New Folder'),
-        ],
-      ),
-      content: Form(
-        key: formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            MyTextField(
-              controller: folderNameController,
-              hint: 'Enter folder name',
-              label: 'Folder Name',
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Please enter a folder name';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 8),
-            MyText(
-              text: 'This folder will be created for this event',
-              size: 11,
-              color: kQuaternaryColor,
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () {
-            folderNameController.dispose();
-            Get.back();
-          },
-          child: const Text('Cancel'),
-        ),
-        ElevatedButton(
-          onPressed: () {
-            if (formKey.currentState!.validate()) {
-              final folderName = folderNameController.text.trim();
-              folderNameController.dispose();
-              Get.back();
-              onCreateFolder(folderName);
-            }
-          },
-          style: ElevatedButton.styleFrom(
-            backgroundColor: kSecondaryColor,
-            foregroundColor: kTertiaryColor,
-          ),
-          child: const Text('Create'),
-        ),
-      ],
-    ),
-  );
 }

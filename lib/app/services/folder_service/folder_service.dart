@@ -61,6 +61,9 @@ class FolderService extends GetxService {
   // ==================== FOLDER CRUD OPERATIONS ====================
 
   /// Create a new folder
+  // SIMPLER FIX - Just update the createFolder method
+
+  /// Create a new folder - FIXED VERSION
   Future<ApiResponse<Folder>> createFolder(CreateFolderRequest request) async {
     try {
       _isLoading.value = true;
@@ -73,27 +76,82 @@ class FolderService extends GetxService {
         );
       }
 
-      final response = await _makeApiRequest<Folder>(
-        method: 'POST',
-        endpoint: ApiConfig.endpoints.createFolder,
-        data: request.toJson(),
-        fromJson: (json) => Folder.fromJson(json),
+      // Make API request
+      final url = '${ApiConfig.fullApiUrl}${ApiConfig.endpoints.createFolder}';
+      final headers = ApiConfig.authHeaders(_authService.authToken!);
+      final getConnect = GetConnect(timeout: ApiConfig.connectTimeout);
+
+      final response = await getConnect.post(
+        url,
+        request.toJson(),
+        headers: headers,
       );
 
-      if (response.success && response.data != null) {
-        // Add to folders list
-        _userFolders.insert(0, response.data!);
+      print('📥 Create Folder Response: ${response.body}');
 
-        // Clear event cache if folder is associated with an event
-        if (request.eventId != null) {
-          _foldersByEvent.remove(request.eventId);
+      // Handle response
+      if (response.statusCode != null &&
+          response.statusCode! >= 200 &&
+          response.statusCode! < 300) {
+        final responseData = response.body;
+
+        // Extract folder data - FIXED to check for "folder" key
+        Folder? folderData;
+
+        if (responseData is Map<String, dynamic>) {
+          if (responseData.containsKey('folder')) {
+            // Backend returns { "message": "...", "folder": {...} }
+            folderData = Folder.fromJson(responseData['folder']);
+            print('✅ Folder created from "folder" key');
+          } else if (responseData.containsKey('data')) {
+            // Alternative response structure
+            folderData = Folder.fromJson(responseData['data']);
+            print('✅ Folder created from "data" key');
+          } else {
+            // Direct folder object
+            folderData = Folder.fromJson(responseData);
+            print('✅ Folder created from direct response');
+          }
         }
 
-        print('Folder created successfully: ${response.data!.name}');
-      }
+        if (folderData != null) {
+          // Add to folders list
+          _userFolders.insert(0, folderData);
 
-      return response;
+          // Clear event cache if folder is associated with an event
+          if (request.eventId != null) {
+            _foldersByEvent.remove(request.eventId);
+          }
+
+          print('✅ Folder created successfully: ${folderData.name}');
+
+          return ApiResponse<Folder>(
+            success: true,
+            data: folderData,
+            message: responseData['message'] ?? 'Folder created successfully',
+            statusCode: response.statusCode,
+          );
+        } else {
+          return ApiResponse<Folder>(
+            success: false,
+            error: 'Failed to parse folder data',
+            statusCode: response.statusCode,
+          );
+        }
+      } else {
+        // Error response
+        final errorData = response.body ?? {};
+        return ApiResponse<Folder>(
+          success: false,
+          error:
+              errorData['message'] ??
+              errorData['error'] ??
+              'Failed to create folder',
+          statusCode: response.statusCode,
+        );
+      }
     } catch (e) {
+      print('❌ Error creating folder: $e');
       return ApiResponse<Folder>(
         success: false,
         error: 'Failed to create folder: $e',

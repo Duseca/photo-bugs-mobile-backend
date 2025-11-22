@@ -1,13 +1,15 @@
 class GoogleTokens {
   final String? accessToken;
   final int? expiryDate;
+  final String? serverAuthCode;
 
-  GoogleTokens({this.accessToken, this.expiryDate});
+  GoogleTokens({this.accessToken, this.expiryDate, this.serverAuthCode});
 
   factory GoogleTokens.fromJson(Map<String, dynamic> json) {
     return GoogleTokens(
       accessToken: json['access_token'] as String?,
       expiryDate: json['expiry_date'] as int? ?? json['expires_in'] as int?,
+      serverAuthCode: json['server_auth_code'] as String?,
     );
   }
 
@@ -15,13 +17,19 @@ class GoogleTokens {
     return {
       if (accessToken != null) 'access_token': accessToken,
       if (expiryDate != null) 'expiry_date': expiryDate,
+      if (serverAuthCode != null) 'server_auth_code': serverAuthCode,
     };
   }
 
-  GoogleTokens copyWith({String? accessToken, int? expiryDate}) {
+  GoogleTokens copyWith({
+    String? accessToken,
+    int? expiryDate,
+    String? serverAuthCode,
+  }) {
     return GoogleTokens(
       accessToken: accessToken ?? this.accessToken,
       expiryDate: expiryDate ?? this.expiryDate,
+      serverAuthCode: serverAuthCode ?? this.serverAuthCode,
     );
   }
 
@@ -41,7 +49,14 @@ class GoogleTokens {
         accessToken != null
             ? '${accessToken!.substring(0, accessToken!.length > 20 ? 20 : accessToken!.length)}...'
             : 'null';
-    return 'GoogleTokens{accessToken: $accessTokenPreview, expiryDate: $expiryDate, isExpired: $isExpired, isValid: $isValid}';
+
+    return 'GoogleTokens{'
+        'accessToken: $accessTokenPreview, '
+        'expiryDate: $expiryDate, '
+        'serverAuthCode: $serverAuthCode, '
+        'isExpired: $isExpired, '
+        'isValid: $isValid'
+        '}';
   }
 
   @override
@@ -50,8 +65,10 @@ class GoogleTokens {
       other is GoogleTokens &&
           runtimeType == other.runtimeType &&
           accessToken == other.accessToken &&
-          expiryDate == other.expiryDate;
+          expiryDate == other.expiryDate &&
+          serverAuthCode == other.serverAuthCode;
 
   @override
-  int get hashCode => accessToken.hashCode ^ expiryDate.hashCode;
+  int get hashCode =>
+      accessToken.hashCode ^ expiryDate.hashCode ^ serverAuthCode.hashCode;
 }

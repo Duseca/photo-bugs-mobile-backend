@@ -6,7 +6,6 @@ import 'package:photo_bug/app/data/models/event_model.dart';
 import 'package:photo_bug/app/data/models/folder_model.dart';
 import 'package:photo_bug/app/modules/user_events/widgets/folderbottomsheet.dart';
 import 'package:photo_bug/app/services/event_service.dart/event_service.dart';
-
 import 'package:photo_bug/app/services/folder_service/folder_service.dart';
 import 'package:photo_bug/app/services/auth/auth_service.dart';
 import 'package:photo_bug/app/routes/app_pages.dart';
@@ -23,11 +22,20 @@ class UserEventDetailsController extends GetxController {
   final RxString eventId = ''.obs;
   final RxBool isMyEvent = false.obs;
 
+  // Controller lifecycle flag
+  bool _isDisposed = false;
+
   @override
   void onInit() {
     super.onInit();
     _initializeServices();
     _loadArguments();
+  }
+
+  @override
+  void onClose() {
+    _isDisposed = true;
+    super.onClose();
   }
 
   void _initializeServices() {
@@ -63,11 +71,13 @@ class UserEventDetailsController extends GetxController {
   }
 
   Future<void> loadEventDetails() async {
-    if (eventId.value.isEmpty) return;
+    if (eventId.value.isEmpty || _isDisposed) return;
 
     try {
       isLoading.value = true;
       final response = await _eventService.getEventById(eventId.value);
+
+      if (_isDisposed) return;
 
       if (response.success && response.data != null) {
         event.value = response.data;
@@ -78,18 +88,24 @@ class UserEventDetailsController extends GetxController {
       }
     } catch (e) {
       print('❌ Error loading event: $e');
-      _showError('Failed to load event details');
+      if (!_isDisposed) {
+        _showError('Failed to load event details');
+      }
     } finally {
-      isLoading.value = false;
+      if (!_isDisposed) {
+        isLoading.value = false;
+      }
     }
   }
 
   Future<void> loadFolders() async {
-    if (event.value?.id == null) return;
+    if (event.value?.id == null || _isDisposed) return;
 
     try {
       isFoldersLoading.value = true;
       final response = await _folderService.getFoldersByEvent(event.value!.id!);
+
+      if (_isDisposed) return;
 
       if (response.success && response.data != null) {
         folders.value = response.data!;
@@ -98,93 +114,42 @@ class UserEventDetailsController extends GetxController {
     } catch (e) {
       print('❌ Error loading folders: $e');
     } finally {
-      isFoldersLoading.value = false;
+      if (!_isDisposed) {
+        isFoldersLoading.value = false;
+      }
     }
   }
 
   Future<void> refreshEventDetails() async {
+    if (_isDisposed) return;
     await loadEventDetails();
   }
 
   void showCreateFolderDialog() {
-    if (event.value?.id == null) {
-      _showError('Event not found');
+    if (_isDisposed || event.value?.id == null) {
+      if (event.value?.id == null) {
+        _showError('Event not found');
+      }
       return;
     }
 
-    final folderNameController = TextEditingController();
-    final formKey = GlobalKey<FormState>();
-
     Get.dialog(
-      AlertDialog(
-        title: Row(
-          children: [
-            Icon(Icons.create_new_folder, color: Colors.blue, size: 24),
-            const SizedBox(width: 8),
-            const Text('Create New Folder'),
-          ],
-        ),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              TextFormField(
-                controller: folderNameController,
-                decoration: InputDecoration(
-                  labelText: 'Folder Name',
-                  hintText: 'Enter folder name',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Please enter a folder name';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'This folder will be created for this event',
-                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              folderNameController.dispose();
-              Get.back();
-            },
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (formKey.currentState!.validate()) {
-                final folderName = folderNameController.text.trim();
-                folderNameController.dispose();
-                Get.back();
-                createFolder(folderName);
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Create'),
-          ),
-        ],
+      _CreateFolderDialog(
+        onCreateFolder: (folderName) {
+          if (!_isDisposed) {
+            createFolder(folderName);
+          }
+        },
       ),
+      barrierDismissible: true,
     );
   }
 
   Future<void> createFolder(String folderName) async {
-    if (event.value?.id == null) {
-      _showError('Event not found');
+    if (_isDisposed || event.value?.id == null) {
+      if (event.value?.id == null && !_isDisposed) {
+        _showError('Event not found');
+      }
       return;
     }
 
@@ -199,6 +164,9 @@ class UserEventDetailsController extends GetxController {
       print('🔄 Creating folder: $folderName for event: ${event.value!.id}');
 
       final response = await _folderService.createFolder(request);
+      print(response);
+
+      if (_isDisposed) return;
 
       if (response.success && response.data != null) {
         _showSuccess('Folder created successfully');
@@ -208,20 +176,26 @@ class UserEventDetailsController extends GetxController {
       }
     } catch (e) {
       print('❌ Error creating folder: $e');
-      _showError('Failed to create folder');
+      if (!_isDisposed) {
+        _showError('Failed to create folder');
+      }
     } finally {
-      isLoading.value = false;
+      if (!_isDisposed) {
+        isLoading.value = false;
+      }
     }
   }
 
   Future<void> acceptEventInvitation() async {
-    if (event.value?.id == null) return;
+    if (_isDisposed || event.value?.id == null) return;
 
     try {
       isLoading.value = true;
       final response = await _eventService.acceptEventInvitation(
         event.value!.id!,
       );
+
+      if (_isDisposed) return;
 
       if (response.success) {
         _showSuccess('Event invitation accepted');
@@ -230,20 +204,26 @@ class UserEventDetailsController extends GetxController {
         _showError(response.error ?? 'Failed to accept invitation');
       }
     } catch (e) {
-      _showError('Failed to accept invitation');
+      if (!_isDisposed) {
+        _showError('Failed to accept invitation');
+      }
     } finally {
-      isLoading.value = false;
+      if (!_isDisposed) {
+        isLoading.value = false;
+      }
     }
   }
 
   Future<void> declineEventInvitation() async {
-    if (event.value?.id == null) return;
+    if (_isDisposed || event.value?.id == null) return;
 
     try {
       isLoading.value = true;
       final response = await _eventService.declineEventInvitation(
         event.value!.id!,
       );
+
+      if (_isDisposed) return;
 
       if (response.success) {
         _showSuccess('Event invitation declined');
@@ -252,18 +232,24 @@ class UserEventDetailsController extends GetxController {
         _showError(response.error ?? 'Failed to decline invitation');
       }
     } catch (e) {
-      _showError('Failed to decline invitation');
+      if (!_isDisposed) {
+        _showError('Failed to decline invitation');
+      }
     } finally {
-      isLoading.value = false;
+      if (!_isDisposed) {
+        isLoading.value = false;
+      }
     }
   }
 
   Future<void> deleteEvent() async {
-    if (event.value?.id == null) return;
+    if (_isDisposed || event.value?.id == null) return;
 
     try {
       isLoading.value = true;
       final response = await _eventService.deleteEvent(event.value!.id!);
+
+      if (_isDisposed) return;
 
       if (response.success) {
         _showSuccess('Event deleted successfully');
@@ -272,22 +258,33 @@ class UserEventDetailsController extends GetxController {
         _showError(response.error ?? 'Failed to delete event');
       }
     } catch (e) {
-      _showError('Failed to delete event');
+      if (!_isDisposed) {
+        _showError('Failed to delete event');
+      }
     } finally {
-      isLoading.value = false;
+      if (!_isDisposed) {
+        isLoading.value = false;
+      }
     }
   }
 
   void navigateToFolderDetails(Folder folder) {
-    if (folder.id == null) return;
-
-    // Show folder details in bottom sheet
+    if (_isDisposed || folder.id == null) return;
     showFolderDetailsBottomSheet(folder);
   }
 
   void showFolderDetailsBottomSheet(Folder folder) {
+    if (_isDisposed) return;
+
     Get.bottomSheet(
-      FolderDetailsBottomSheet(folder: folder, onRefresh: () => loadFolders()),
+      FolderDetailsBottomSheet(
+        folder: folder,
+        onRefresh: () {
+          if (!_isDisposed) {
+            loadFolders();
+          }
+        },
+      ),
       isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
@@ -297,6 +294,7 @@ class UserEventDetailsController extends GetxController {
   }
 
   void shareEvent() {
+    if (_isDisposed) return;
     _showInfo('Share functionality coming soon!');
   }
 
@@ -312,6 +310,8 @@ class UserEventDetailsController extends GetxController {
   }
 
   void _showSuccess(String message) {
+    if (_isDisposed) return;
+
     Get.snackbar(
       'Success',
       message,
@@ -325,6 +325,8 @@ class UserEventDetailsController extends GetxController {
   }
 
   void _showError(String message) {
+    if (_isDisposed) return;
+
     Get.snackbar(
       'Error',
       message,
@@ -338,6 +340,8 @@ class UserEventDetailsController extends GetxController {
   }
 
   void _showInfo(String message) {
+    if (_isDisposed) return;
+
     Get.snackbar(
       'Info',
       message,
@@ -347,6 +351,118 @@ class UserEventDetailsController extends GetxController {
       duration: const Duration(seconds: 2),
       margin: const EdgeInsets.all(16),
       icon: const Icon(Icons.info, color: Colors.white),
+    );
+  }
+}
+
+// ==================== CREATE FOLDER DIALOG WIDGET ====================
+
+class _CreateFolderDialog extends StatefulWidget {
+  final Function(String) onCreateFolder;
+
+  const _CreateFolderDialog({required this.onCreateFolder});
+
+  @override
+  State<_CreateFolderDialog> createState() => _CreateFolderDialogState();
+}
+
+class _CreateFolderDialogState extends State<_CreateFolderDialog> {
+  late final TextEditingController _folderNameController;
+  late final GlobalKey<FormState> _formKey;
+
+  @override
+  void initState() {
+    super.initState();
+    _folderNameController = TextEditingController();
+    _formKey = GlobalKey<FormState>();
+  }
+
+  @override
+  void dispose() {
+    _folderNameController.dispose();
+    super.dispose();
+  }
+
+  void _handleCreate() {
+    if (_formKey.currentState!.validate()) {
+      final folderName = _folderNameController.text.trim();
+      Navigator.of(context).pop();
+      // Use a delay to ensure dialog is fully closed
+      Future.delayed(const Duration(milliseconds: 100), () {
+        widget.onCreateFolder(folderName);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Row(
+        children: [
+          Icon(Icons.create_new_folder, color: Colors.blue, size: 24),
+          const SizedBox(width: 8),
+          const Text('Create New Folder'),
+        ],
+      ),
+      content: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.8,
+          maxHeight: MediaQuery.of(context).size.height * 0.3,
+        ),
+        child: SingleChildScrollView(
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextFormField(
+                  controller: _folderNameController,
+                  autofocus: false,
+                  decoration: InputDecoration(
+                    labelText: 'Folder Name',
+                    hintText: 'Enter folder name',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Please enter a folder name';
+                    }
+                    return null;
+                  },
+                  textInputAction: TextInputAction.done,
+                  onFieldSubmitted: (_) => _handleCreate(),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'This folder will be created for this event',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: _handleCreate,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.blue,
+            foregroundColor: Colors.white,
+          ),
+          child: const Text('Create'),
+        ),
+      ],
     );
   }
 }

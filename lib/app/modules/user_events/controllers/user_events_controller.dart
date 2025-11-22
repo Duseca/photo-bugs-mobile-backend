@@ -250,7 +250,7 @@ class UserEventsController extends GetxController
     // Set selected event in service
     _eventService.setSelectedEvent(event);
 
-    if (isMyEvent) {
+    if (!isMyEvent) {
       Get.to(
         () => const CreatorEventDetails(),
         arguments: {
@@ -262,11 +262,7 @@ class UserEventsController extends GetxController
     } else {
       Get.to(
         () => const UserEventDetails(),
-        arguments: {
-          'eventId': event.id,
-          'event': _convertEventToMap(event),
-          'isMyEvent': false,
-        },
+        arguments: {'eventId': event.id, 'event': event, 'isMyEvent': false},
       );
     }
   }

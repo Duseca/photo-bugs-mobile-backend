@@ -282,7 +282,7 @@ class CreatorEventDetails extends GetView<UserEventsController> {
                 bgColor: Colors.transparent,
                 textColor: kSecondaryColor,
                 splashColor: kSecondaryColor.withOpacity(0.1),
-                buttonText: 'Create New Folder',
+                buttonText: 'download all Folder',
                 onTap: () {
                   // TODO: Navigate to create folder screen
                   Get.snackbar(

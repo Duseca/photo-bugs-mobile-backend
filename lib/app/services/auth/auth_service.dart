@@ -1,11 +1,9 @@
 // CORRECTED VERSION - Google Sign-In v7.2.0
-// GoogleSignInAuthentication ab sirf idToken provide karta hai
-// accessToken ab directly available nahi hai
-
 // ignore_for_file: avoid_print
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:get/get.dart';
 import 'package:photo_bug/app/data/models/google_tokens_model.dart';
 import 'package:photo_bug/app/services/auth/token_dialog.dart';
@@ -17,6 +15,7 @@ import 'package:photo_bug/app/data/configs/api_configs.dart';
 import '../app/app_service.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
+import 'package:http/http.dart' as http;
 
 class AuthService extends GetxService {
   static AuthService get instance => Get.find<AuthService>();
@@ -523,6 +522,13 @@ class AuthService extends GetxService {
 
       final getConnect = GetConnect(timeout: ApiConfig.connectTimeout);
 
+      // ✅ ADD THIS: Log the exact JSON being sent
+      if (data != null) {
+        print('🔍 EXACT JSON BEING SENT:');
+        print(jsonEncode(data));
+        print('🔍 END OF JSON');
+      }
+
       Response response;
 
       switch (method.toUpperCase()) {
@@ -657,114 +663,34 @@ class AuthService extends GetxService {
   /// Google Sign-In - CORRECTED VERSION WITH TOKEN DIALOG
   // Updated signInWithGoogle method with token generation
   Future<ApiResponse<auth_models.AuthResponse>> signInWithGoogle() async {
-    String? accessToken;
-    String? serverAuthCode;
-
     try {
       _isLoading.value = true;
-
-      print('🔵 Step 1: Starting Google Sign-In');
-      await _ensureGoogleSignInInitialized();
-
-      if (!_isGoogleSignInInitialized || _googleSignIn == null) {
-        return ApiResponse<auth_models.AuthResponse>(
-          success: false,
-          error: 'Google Sign-In initialization failed',
-        );
-      }
-
       final scopes = [
         'email',
         'profile',
         'https://www.googleapis.com/auth/drive.file',
       ];
 
-      GoogleSignInAccount? googleUser;
+      // Step 1-3: Get Google auth (your existing code is fine)
+      await _ensureGoogleSignInInitialized();
+      final googleUser = await _googleSignIn!.authenticate();
+      final googleAuth = await googleUser.authentication;
 
-      try {
-        googleUser = await _googleSignIn!.authenticate();
+      // Get serverAuthCode
+      final serverAuth = await googleUser.authorizationClient.authorizeServer(
+        scopes,
+      );
+      final serverAuthCode = serverAuth?.serverAuthCode;
 
-        print('✅ ============ GOOGLE USER DETAILS ============');
-        print('✅ Google User ID: ${googleUser.id}');
-        print('✅ Google Email: ${googleUser.email}');
-        print('✅ Google Display Name: ${googleUser.displayName}');
-        print('✅ Google Photo URL: ${googleUser.photoUrl}');
-        print('✅ ===========================================');
-      } on GoogleSignInException catch (e) {
-        if (e.code == GoogleSignInExceptionCode.canceled) {
-          return ApiResponse<auth_models.AuthResponse>(
-            success: false,
-            error: 'Google sign-in was cancelled',
-          );
-        }
+      // Get accessToken
+      final authorizedUser = await googleUser.authorizationClient
+          .authorizeScopes(scopes);
+      final accessToken = authorizedUser.accessToken;
 
-        return ApiResponse<auth_models.AuthResponse>(
-          success: false,
-          error: 'Google sign-in failed: ${e.description}',
-        );
-      } catch (e) {
-        return ApiResponse<auth_models.AuthResponse>(
-          success: false,
-          error: 'Google sign-in failed: $e',
-        );
-      }
-
-      if (googleUser == null) {
-        print('❌ googleUser is null');
-        return ApiResponse<auth_models.AuthResponse>(
-          success: false,
-          error: 'Google sign-in failed - no user returned',
-        );
-      }
-
-      print('🔵 Step 2: Getting authentication tokens');
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
-
-      // Get server auth code
-      final GoogleSignInServerAuthorization? serverAuth = await googleUser
-          .authorizationClient
-          .authorizeServer(scopes);
-
-      if (serverAuth != null && serverAuth.serverAuthCode != null) {
-        serverAuthCode = serverAuth.serverAuthCode;
-        print(
-          '✅ Server Auth Code obtained: ${serverAuthCode!.substring(0, 20)}...',
-        );
-      } else {
-        print('⚠️ Server Auth Code not available.');
-        return ApiResponse<auth_models.AuthResponse>(
-          success: false,
-          error: 'Failed to obtain server auth code',
-        );
-      }
-
-      // Get access token
-      try {
-        final authorizedUser = await googleUser.authorizationClient
-            .authorizeScopes(scopes);
-        accessToken = authorizedUser.accessToken;
-
-        if (accessToken != null && accessToken.length > 50) {
-          print('✅ Access Token obtained: ${accessToken.substring(0, 50)}...');
-        }
-      } catch (e) {
-        print('❌ Failed to get access token: $e');
-      }
-
-      final idToken = googleAuth.idToken ?? '';
-
-      if (idToken.isEmpty) {
-        return ApiResponse<auth_models.AuthResponse>(
-          success: false,
-          error: 'Failed to get Google ID token',
-        );
-      }
-
-      print('🔵 Step 3: Creating tokens object');
-      // Create tokens object with the data we have
+      // Create tokens object
       final tokens = GoogleTokens(
-        accessToken: accessToken ?? '',
+        accessToken: accessToken,
+        serverAuthCode: serverAuthCode,
         expiryDate:
             DateTime.now().add(const Duration(hours: 1)).millisecondsSinceEpoch,
       );
@@ -776,33 +702,39 @@ class AuthService extends GetxService {
         name: googleUser.displayName ?? '',
         profilePicture: googleUser.photoUrl,
       );
-
-      print('🔵 Step 4: Processing social authentication');
-      final response = await _handleSocialAuthWithTokens(
-        socialUserInfo,
-        tokens,
-      );
-
-      // Step 5: After successful authentication, generate backend tokens
-      if (response.success && serverAuthCode != null) {
-        print('🔵 Step 5: User authenticated, now generating backend tokens');
+      if (serverAuthCode != null) {
         final tokenResponse = await _generateGoogleTokens(
           email: googleUser.email,
           serverAuthCode: serverAuthCode,
         );
 
         if (tokenResponse.success) {
-          print('✅ Backend tokens generated and stored successfully');
-          // Refresh user data to get the updated tokens from backend
-          await refreshUserData();
+          print('✅ Backend tokens generated successfully');
+          await refreshUserData(); // Refresh to get updated tokens from backend
         } else {
-          print('⚠️ Backend token generation failed but user is authenticated');
+          print('⚠️ Backend token generation failed: ${tokenResponse.error}');
         }
+      }
+
+      // Step 4: Login or Register (this sets authToken)
+      final response = await _handleSocialAuthWithTokens(
+        socialUserInfo,
+        tokens,
+      );
+
+      // Step 5: ONLY if login/register succeeded, generate backend tokens
+      if (response.success && response.data?.token != null) {
+        print('✅ User authenticated, now generating backend tokens');
+
+        // Save the token first (CRITICAL!)
+        await _saveToken(response.data!.token!);
+
+        // Now call generate-tokens with the saved authToken
       }
 
       return response;
     } catch (e) {
-      print('❌ Top-level error: $e');
+      print('❌ Google sign-in error: $e');
       return ApiResponse<auth_models.AuthResponse>(
         success: false,
         error: 'Google sign-in failed: $e',
@@ -819,58 +751,74 @@ class AuthService extends GetxService {
     required String serverAuthCode,
   }) async {
     try {
-      print('📤 Sending token generation request to backend');
-      print('   Email: $email');
-      print('   Server Auth Code: ${serverAuthCode.substring(0, 20)}...');
-      print('   Auth Token available: ${authToken != null}');
+      final cleanEmail = email.trim();
+      final cleanServerAuthCode = serverAuthCode.trim();
 
-      // This endpoint requires authentication, so we need authToken
-      if (authToken == null) {
-        print(
-          '⚠️ Warning: No auth token available for generate-tokens endpoint',
-        );
-        print('⚠️ This call will be made after authentication completes');
-        return ApiResponse<dynamic>(
-          success: false,
-          error: 'No authentication token available yet',
-        );
-      }
+      print('📤 ========================================');
+      print('📤 SENDING TOKEN GENERATION REQUEST');
+      print('📤 ========================================');
+      print('📤 Email: "$cleanEmail"');
+      print('📤 Email length: ${cleanEmail.length}');
+      print('📤 ServerAuthCode length: ${cleanServerAuthCode.length}');
+      print('📤 ServerAuthCode COMPLETE:');
+      print(cleanServerAuthCode); // Print on separate line without truncation
+      print('📤 Auth Token available: ${authToken != null}');
+      print('📤 ========================================');
 
-      final url =
-          '${ApiConfig.fullApiUrl}${ApiConfig.endpoints.generateTokens}';
-      final headers = ApiConfig.authHeaders(authToken!);
+      // if (authToken == null) {
+      //   return ApiResponse<dynamic>(
+      //     success: false,
+      //     error: 'No authentication token available yet',
+      //   );
+      // }
+
+      final url = Uri.parse(
+        '${ApiConfig.fullApiUrl}${ApiConfig.endpoints.generateTokens}',
+      );
+
+      final headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        //'Authorization': 'Bearer $authToken',
+        'X-API-Version': 'v1',
+        'X-Platform': Platform.isAndroid ? 'android' : 'ios',
+      };
+
+      final body = {'email': cleanEmail, 'serverAuthCode': cleanServerAuthCode};
+
+      final jsonBody = jsonEncode(body);
 
       print('📤 Request URL: $url');
-      print('📤 Request Headers: $headers');
+      print('📤 JSON Body being sent:');
+      print(jsonBody);
+      print('📤 ========================================');
 
-      final getConnect = GetConnect(timeout: ApiConfig.connectTimeout);
+      final response = await http.post(url, headers: headers, body: jsonBody);
 
-      final response = await getConnect.post(url, {
-        'email': email,
-        'serverAuthCode': serverAuthCode,
-      }, headers: headers);
-
-      print('📥 Backend response status: ${response.statusCode}');
-      print('📥 Backend response body: ${response.body}');
+      print('📥 ========================================');
+      print('📥 BACKEND RESPONSE');
+      print('📥 ========================================');
+      print('📥 Status Code: ${response.statusCode}');
+      print('📥 Response Body: ${response.body}');
+      print('📥 ========================================');
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         print('✅ Token generation successful');
-
         return ApiResponse<dynamic>(
           success: true,
           statusCode: response.statusCode,
-          data: response.body,
+          data: jsonDecode(response.body),
           message: 'Tokens generated successfully',
         );
       } else {
+        final errorBody = jsonDecode(response.body);
         final errorMessage =
-            response.body is Map
-                ? (response.body['message'] ??
-                    response.body['error'] ??
-                    'Token generation failed')
-                : 'Token generation failed';
+            errorBody['message'] ??
+            errorBody['error'] ??
+            'Token generation failed';
 
         print('❌ Token generation failed: $errorMessage');
+        print('❌ Full error response: $errorBody');
 
         return ApiResponse<dynamic>(
           success: false,
@@ -878,8 +826,13 @@ class AuthService extends GetxService {
           error: errorMessage,
         );
       }
-    } catch (e) {
-      print('❌ Token generation error: $e');
+    } catch (e, stackTrace) {
+      print('❌ ========================================');
+      print('❌ EXCEPTION OCCURRED');
+      print('❌ ========================================');
+      print('❌ Error: $e');
+      print('❌ Stack trace: $stackTrace');
+      print('❌ ========================================');
       return ApiResponse<dynamic>(
         success: false,
         error: 'Failed to generate tokens: $e',
@@ -1317,6 +1270,7 @@ class AuthService extends GetxService {
 
       final tokens = GoogleTokens(
         accessToken: accessToken ?? '',
+
         expiryDate:
             DateTime.now().add(const Duration(hours: 1)).millisecondsSinceEpoch,
       );

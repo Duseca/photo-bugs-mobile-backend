@@ -249,6 +249,7 @@ class PhotoService extends GetxService {
     required File file,
     double? price,
     PhotoMetadata? metadata,
+    String? folderId,
   }) async {
     try {
       _isUploading.value = true;
@@ -301,7 +302,9 @@ class PhotoService extends GetxService {
       );
       request.files.add(multipartFile);
       print('📎 File added to request: ${file.path.split('/').last}');
-
+      print('📁 Folder ID added: 6920568b11a8e828ddf51fff');
+      request.fields['folder_id'] = folderId ?? '6920568b11a8e828ddf51fff';
+      request.fields['folderId'] = folderId ?? '6920568b11a8e828ddf51fff';
       // Add price if provided
       if (price != null) {
         request.fields['price'] = price.toString();

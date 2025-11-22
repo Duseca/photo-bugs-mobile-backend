@@ -13,11 +13,15 @@ import 'package:photo_bug/app/core/common_widget/my_text_widget.dart';
 import 'package:photo_bug/app/core/common_widget/my_text_field_widget.dart';
 import 'package:photo_bug/app/core/common_widget/my_button_widget.dart';
 import 'package:photo_bug/app/core/common_widget/congrats_dialog_widget.dart';
+import 'package:photo_bug/app/data/models/event_model.dart';
+import 'package:photo_bug/app/data/models/folder_model.dart';
 import 'package:photo_bug/app/modules/home/screens/app_feedback.dart';
 import 'package:photo_bug/app/modules/home/widgets/upload_image.dart';
 import 'package:photo_bug/app/routes/app_pages.dart';
 import 'package:photo_bug/app/data/models/photo_model.dart';
 import 'package:photo_bug/app/services/auth/auth_service.dart';
+import 'package:photo_bug/app/services/event_service.dart/event_service.dart';
+import 'package:photo_bug/app/services/folder_service/folder_service.dart';
 import 'package:photo_bug/app/services/photo_service/photo_service.dart';
 
 // HomeController
@@ -34,6 +38,17 @@ class HomeController extends GetxController {
   final RxMap<String, bool> favoriteStates = <String, bool>{}.obs;
   final RxList<Photo> trendingPhotos = <Photo>[].obs;
   final RxBool isFetchingTrending = false.obs;
+
+  final EventService _eventService = EventService.instance;
+  final FolderService _folderService = FolderService.instance;
+
+  // NEW: Event and Folder selection for upload
+  final RxString selectedEventId = ''.obs;
+  final RxString selectedFolderId = ''.obs;
+  final RxList<Event> userEvents = <Event>[].obs;
+  final RxList<Folder> eventFolders = <Folder>[].obs;
+  final RxBool isLoadingEvents = false.obs;
+  final RxBool isLoadingFolders = false.obs;
 
   // NEW: Toggle for showing only user's photos
   final RxBool showOnlyMyPhotos = false.obs;
@@ -481,6 +496,63 @@ class HomeController extends GetxController {
     );
   }
 
+  Future<void> loadUserEvents() async {
+    try {
+      isLoadingEvents.value = true;
+
+      final response = await _eventService.getUserCreatedEvents();
+
+      if (response.success && response.data != null) {
+        userEvents.value = response.data!;
+        print('✅ Loaded ${userEvents.length} user events');
+      } else {
+        print('⚠️ Failed to load events: ${response.error}');
+        userEvents.clear();
+      }
+    } catch (e) {
+      print('❌ Error loading user events: $e');
+      userEvents.clear();
+    } finally {
+      isLoadingEvents.value = false;
+    }
+  }
+
+  Future<void> loadEventFolders(String eventId) async {
+    try {
+      isLoadingFolders.value = true;
+      selectedFolderId.value = ''; // Clear previous selection
+
+      final response = await _folderService.getFoldersByEvent(eventId);
+
+      if (response.success && response.data != null) {
+        eventFolders.value = response.data!;
+        print('✅ Loaded ${eventFolders.length} folders for event');
+      } else {
+        print('⚠️ Failed to load folders: ${response.error}');
+        eventFolders.clear();
+      }
+    } catch (e) {
+      print('❌ Error loading event folders: $e');
+      eventFolders.clear();
+    } finally {
+      isLoadingFolders.value = false;
+    }
+  }
+
+  /// Handle event selection
+  void onEventSelected(String eventId) {
+    selectedEventId.value = eventId;
+    // Load folders for this event
+    loadEventFolders(eventId);
+  }
+
+  /// Clear event selection
+  void clearEventSelection() {
+    selectedEventId.value = '';
+    selectedFolderId.value = '';
+    eventFolders.clear();
+  }
+
   // ==================== PHOTO UPLOAD FUNCTIONALITY ====================
 
   /// Navigate to upload screen
@@ -498,6 +570,8 @@ class HomeController extends GetxController {
       return;
     }
 
+    // Load user events before navigation
+    loadUserEvents();
     Get.to(() => PhotoUploadScreen());
   }
 
@@ -557,6 +631,19 @@ class HomeController extends GetxController {
       return false;
     }
 
+    // NEW: Validate folder selection if event is selected
+    if (selectedEventId.value.isNotEmpty && selectedFolderId.value.isEmpty) {
+      Get.snackbar(
+        'Validation Error',
+        'Please select a folder for the selected event',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.orange.withOpacity(0.8),
+        colorText: Colors.white,
+        duration: const Duration(seconds: 2),
+      );
+      return false;
+    }
+
     if (keywordsController.text.trim().length < 20) {
       Get.snackbar(
         'Validation Error',
@@ -572,7 +659,7 @@ class HomeController extends GetxController {
     return true;
   }
 
-  /// Upload photo
+  /// Upload photo - UPDATED VERSION
   Future<void> uploadPhoto() async {
     try {
       // Validate form
@@ -613,11 +700,15 @@ class HomeController extends GetxController {
                 .toList(),
       );
 
-      // Upload photo with file
+      // Upload photo with file - UPDATED WITH FOLDER ID
       final response = await _photoService.uploadPhotoWithFile(
         file: File(selectedImageFile.value!.path),
         price: price,
         metadata: metadata,
+        folderId:
+            selectedFolderId.value.isNotEmpty
+                ? selectedFolderId.value
+                : null, // NEW: Pass folder ID
       );
 
       if (response.success) {
@@ -639,7 +730,7 @@ class HomeController extends GetxController {
           ),
         );
 
-        print('Photo uploaded successfully: ${response.data?.id}');
+        print('✅ Photo uploaded successfully: ${response.data?.id}');
       } else {
         Get.snackbar(
           'Upload Failed',
@@ -649,10 +740,11 @@ class HomeController extends GetxController {
           colorText: Colors.white,
           duration: const Duration(seconds: 3),
         );
-        print('Upload failed: ${response.error}');
+        _clearUploadForm();
+        print('❌ Upload failed: ${response.error}');
       }
     } catch (e) {
-      print('Error uploading photo: $e');
+      print('❌ Error uploading photo: $e');
       Get.snackbar(
         'Error',
         'An error occurred while uploading',
@@ -676,6 +768,9 @@ class HomeController extends GetxController {
     selectedSubCategory.value = '';
     isMatureContent.value = false;
     isRedescription.value = false;
+    selectedEventId.value = '';
+    selectedFolderId.value = '';
+    eventFolders.clear();
   }
 
   @override

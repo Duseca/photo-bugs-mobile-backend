@@ -52,6 +52,18 @@ class PhotoUploadScreen extends GetView<HomeController> {
 
               const SizedBox(height: 20),
 
+              // Event Dropdown
+              _buildEventDropdown(),
+
+              const SizedBox(height: 20),
+
+              // Folder Dropdown (shows only if event is selected)
+              if (controller.selectedEventId.value.isNotEmpty)
+                _buildFolderDropdown(),
+
+              if (controller.selectedEventId.value.isNotEmpty)
+                const SizedBox(height: 20),
+
               // Category Dropdown
               _buildDropdownField(
                 label: 'Category',
@@ -221,6 +233,145 @@ class PhotoUploadScreen extends GetView<HomeController> {
     );
   }
 
+  Widget _buildEventDropdown() {
+    return Obx(() {
+      if (controller.isLoadingEvents.value) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            MyText(
+              text: 'Select Event (Optional)',
+              size: 14,
+              weight: FontWeight.w500,
+              color: kBlackColor.withOpacity(0.6),
+              paddingBottom: 8,
+            ),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: kQuaternaryColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Center(
+                child: SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            ),
+          ],
+        );
+      }
+
+      return _buildDropdownField(
+        label: 'Select Event (Optional)',
+        hint: 'Choose an event',
+        value:
+            controller.selectedEventId.value.isEmpty
+                ? null
+                : controller.selectedEventId.value,
+        items: controller.userEvents.map((event) => event.id!).toList(),
+        displayItems: controller.userEvents.map((event) => event.name).toList(),
+        onChanged: (value) {
+          if (value != null) {
+            controller.onEventSelected(value);
+          } else {
+            controller.clearEventSelection();
+          }
+        },
+        showClearButton: controller.selectedEventId.value.isNotEmpty,
+        onClear: controller.clearEventSelection,
+      );
+    });
+  }
+
+  Widget _buildFolderDropdown() {
+    return Obx(() {
+      if (controller.isLoadingFolders.value) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            MyText(
+              text: 'Select Folder (Required)',
+              size: 14,
+              weight: FontWeight.w500,
+              color: kBlackColor.withOpacity(0.6),
+              paddingBottom: 8,
+            ),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: kQuaternaryColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Center(
+                child: SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            ),
+          ],
+        );
+      }
+
+      if (controller.eventFolders.isEmpty) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            MyText(
+              text: 'Select Folder (Required)',
+              size: 14,
+              weight: FontWeight.w500,
+              color: kBlackColor.withOpacity(0.6),
+              paddingBottom: 8,
+            ),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.folder_off, color: Colors.orange, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: MyText(
+                      text: 'No folders available for this event',
+                      size: 13,
+                      color: Colors.orange[800]!,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      }
+
+      return _buildDropdownField(
+        label: 'Select Folder (Required)',
+        hint: 'Choose a folder',
+        value:
+            controller.selectedFolderId.value.isEmpty
+                ? null
+                : controller.selectedFolderId.value,
+        items: controller.eventFolders.map((folder) => folder.id!).toList(),
+        displayItems:
+            controller.eventFolders.map((folder) => folder.name).toList(),
+        onChanged: (value) {
+          if (value != null) {
+            controller.selectedFolderId.value = value;
+          }
+        },
+      );
+    });
+  }
+
   Widget _buildTextField({
     required String label,
     required TextEditingController controller,
@@ -279,8 +430,13 @@ class PhotoUploadScreen extends GetView<HomeController> {
     required String hint,
     required String? value,
     required List<String> items,
+    List<String>? displayItems,
     required Function(String?) onChanged,
+    bool showClearButton = false,
+    VoidCallback? onClear,
   }) {
+    final displayList = displayItems ?? items;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -297,36 +453,54 @@ class PhotoUploadScreen extends GetView<HomeController> {
             color: kQuaternaryColor.withOpacity(0.1),
             borderRadius: BorderRadius.circular(8),
           ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: value,
-              hint: Text(
-                hint,
-                style: TextStyle(
-                  color: kBlackColor.withOpacity(0.3),
-                  fontSize: 14,
+          child: Row(
+            children: [
+              Expanded(
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: value,
+                    hint: Text(
+                      hint,
+                      style: TextStyle(
+                        color: kBlackColor.withOpacity(0.3),
+                        fontSize: 14,
+                      ),
+                    ),
+                    isExpanded: true,
+                    icon: Icon(
+                      Icons.keyboard_arrow_down,
+                      color: kBlackColor.withOpacity(0.5),
+                    ),
+                    items: List.generate(items.length, (index) {
+                      return DropdownMenuItem<String>(
+                        value: items[index],
+                        child: Text(
+                          displayList[index],
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      );
+                    }),
+                    onChanged: onChanged,
+                  ),
                 ),
               ),
-              isExpanded: true,
-              icon: Icon(
-                Icons.keyboard_arrow_down,
-                color: kBlackColor.withOpacity(0.5),
-              ),
-              items:
-                  items.map((String item) {
-                    return DropdownMenuItem<String>(
-                      value: item,
-                      child: Text(
-                        item,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    );
-                  }).toList(),
-              onChanged: onChanged,
-            ),
+              if (showClearButton && value != null)
+                GestureDetector(
+                  onTap: onClear,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: Icon(
+                      Icons.clear,
+                      size: 20,
+                      color: kBlackColor.withOpacity(0.5),
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
       ],
