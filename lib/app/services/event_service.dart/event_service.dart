@@ -102,6 +102,7 @@ class EventService extends GetxService {
   }
 
   /// Get all events
+  /// Get all events - PROPERLY FILTERED
   Future<ApiResponse<List<Event>>> getAllEvents() async {
     try {
       _isLoading.value = true;
@@ -110,18 +111,125 @@ class EventService extends GetxService {
         method: 'GET',
         endpoint: ApiConfig.endpoints.allEvents,
         fromJson: (json) {
-          if (json is List) {
-            return json.map((e) => Event.fromJson(e)).toList();
+          if (json is Map<String, dynamic> && json.containsKey('data')) {
+            final List<dynamic> dataList = json['data'] as List<dynamic>;
+            final currentUserId = _authService.currentUser?.id;
+
+            print('📊 All Events - Total from API: ${dataList.length}');
+            print('👤 Current User ID: $currentUserId');
+
+            final events = dataList.map((e) => Event.fromJson(e)).toList();
+
+            // Filter out user's own created events
+            final filteredEvents =
+                events.where((event) {
+                  final isOwnEvent = event.createdBy == currentUserId;
+                  if (isOwnEvent) {
+                    print(
+                      '❌ Filtering out own event: ${event.name} (ID: ${event.id})',
+                    );
+                  }
+                  return !isOwnEvent;
+                }).toList();
+
+            print('✅ Filtered Events Count: ${filteredEvents.length}');
+            return filteredEvents;
           }
+
+          if (json is List) {
+            final currentUserId = _authService.currentUser?.id;
+            final events = json.map((e) => Event.fromJson(e)).toList();
+            return events
+                .where((event) => event.createdBy != currentUserId)
+                .toList();
+          }
+
           return <Event>[];
         },
       );
 
       return response;
     } catch (e) {
+      print('❌ Error in getAllEvents: $e');
       return ApiResponse<List<Event>>(
         success: false,
         error: 'Failed to get all events: $e',
+      );
+    } finally {
+      _isLoading.value = false;
+    }
+  }
+
+  /// Get all events where user is creator OR photographer
+  Future<ApiResponse<List<Event>>> getAllEventsForUpload() async {
+    try {
+      _isLoading.value = true;
+
+      final response = await _makeApiRequest<List<Event>>(
+        method: 'GET',
+        endpoint: ApiConfig.endpoints.allEvents,
+        fromJson: (json) {
+          if (json is Map<String, dynamic> && json.containsKey('data')) {
+            final List<dynamic> dataList = json['data'] as List<dynamic>;
+            final currentUserId = _authService.currentUser?.id;
+
+            print('📊 All Events - Total from API: ${dataList.length}');
+            print('👤 Current User ID: $currentUserId');
+
+            final events = dataList.map((e) => Event.fromJson(e)).toList();
+
+            // Filter: Show only events where user is creator OR photographer
+            final filteredEvents =
+                events.where((event) {
+                  final isCreator = event.creatorId == currentUserId;
+                  final isPhotographer = event.photographerId == currentUserId;
+
+                  print('🔍 Event: ${event.name}');
+                  print('   Creator ID: ${event.creatorId}');
+                  print('   Photographer ID: ${event.photographerId}');
+                  print('   Is Creator: $isCreator');
+                  print('   Is Photographer: $isPhotographer');
+
+                  // Show if user is either creator OR photographer
+                  final shouldShow = isCreator || isPhotographer;
+                  print('   Should Show: $shouldShow');
+
+                  return shouldShow;
+                }).toList();
+
+            print('✅ Filtered Events Count: ${filteredEvents.length}');
+            print('✅ Events where user is creator or photographer:');
+            for (var event in filteredEvents) {
+              print(
+                '   - ${event.name} (Creator: ${event.creatorId}, Photographer: ${event.photographerId})',
+              );
+            }
+
+            return filteredEvents;
+          }
+
+          if (json is List) {
+            final currentUserId = _authService.currentUser?.id;
+            final events = json.map((e) => Event.fromJson(e)).toList();
+
+            // Filter: Show only events where user is creator OR photographer
+            return events.where((event) {
+              final isCreator = event.creatorId == currentUserId;
+              final isPhotographer = event.photographerId == currentUserId;
+              return isCreator || isPhotographer;
+            }).toList();
+          }
+
+          return <Event>[];
+        },
+      );
+
+      return response;
+    } catch (e) {
+      print('❌ Error in getAllEventsFor: $e');
+      return ApiResponse<List<Event>>(
+        success: false,
+        error: 'Failed to get events: $e',
       );
     } finally {
       _isLoading.value = false;

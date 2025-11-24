@@ -3,7 +3,7 @@ import 'package:photo_bug/app/data/models/location_model.dart';
 class Event {
   final String? id;
   final String name;
-  final String? creatorId;
+  final String? creatorId; // This should be used
   final String? photographerId;
   final String? image;
   final Location? location;
@@ -17,6 +17,9 @@ class Event {
   final EventStatus status;
   final DateTime? createdAt;
   final DateTime? updatedAt;
+
+  // ADD THIS GETTER - Very Important!
+  String? get createdBy => creatorId;
 
   Event({
     this.id,
@@ -52,7 +55,7 @@ class Event {
   }
 
   factory Event.fromJson(Map<String, dynamic> json) {
-    // Safely extract creator ID
+    // Safely extract creator ID - FIXED VERSION
     String? creatorId;
     try {
       if (json['created_by'] != null) {
@@ -62,6 +65,7 @@ class Event {
           creatorId = json['created_by'];
         }
       }
+      // Fallback to other possible keys
       creatorId ??= json['creatorId'] ?? json['creator_id'];
     } catch (e) {
       print('Error parsing creatorId: $e');
@@ -167,11 +171,11 @@ class Event {
     );
   }
 
+  // Rest of your existing code...
   static EventStatus _determineEventStatus(
     Map<String, dynamic> json,
     DateTime? date,
   ) {
-    // If status is explicitly provided
     if (json['status'] != null) {
       try {
         return EventStatusExtension.fromString(json['status'].toString());
@@ -180,18 +184,17 @@ class Event {
       }
     }
 
-    // Determine status based on date
     if (date != null) {
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
       final eventDay = DateTime(date.year, date.month, date.day);
 
       if (eventDay.isAfter(today)) {
-        return EventStatus.confirmed; // Future event
+        return EventStatus.confirmed;
       } else if (eventDay.isBefore(today)) {
-        return EventStatus.completed; // Past event
+        return EventStatus.completed;
       } else {
-        return EventStatus.ongoing; // Today's event
+        return EventStatus.ongoing;
       }
     }
 
@@ -202,7 +205,7 @@ class Event {
     return {
       if (id != null) '_id': id,
       'name': name,
-      if (creatorId != null) 'creatorId': creatorId,
+      if (creatorId != null) 'created_by': creatorId,
       if (photographerId != null) 'photographer': photographerId,
       if (image != null) 'image': image,
       if (location != null) 'location': location!.toJson(),
@@ -260,7 +263,7 @@ class Event {
 
   @override
   String toString() {
-    return 'Event{id: $id, name: $name, type: $type, date: $date}';
+    return 'Event{id: $id, name: $name, type: $type, date: $date, creatorId: $creatorId}';
   }
 
   @override
@@ -272,10 +275,14 @@ class Event {
   int get hashCode => id.hashCode;
 }
 
+// EventRecipient class remains the same
 class EventRecipient {
   final String? id;
   final String? email;
   final RecipientStatus status;
+
+  // ADD THIS GETTER
+  String? get userId => id;
 
   EventRecipient({this.id, this.email, this.status = RecipientStatus.pending});
 
@@ -314,6 +321,8 @@ class EventRecipient {
     return 'EventRecipient{id: $id, email: $email, status: $status}';
   }
 }
+
+// Rest of your enums and extensions remain the same...
 
 class CreateEventRequest {
   final String name;

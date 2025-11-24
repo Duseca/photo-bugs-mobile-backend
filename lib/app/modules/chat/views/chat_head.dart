@@ -17,14 +17,8 @@ class ChatHeadScreen extends GetView<ChatHeadController> {
         children: [_buildSearchBar(), Expanded(child: _buildChatList())],
       ),
       floatingActionButton: FloatingActionButton(
-        heroTag: 'chat_fab', // Fixed hero tag
-        onPressed: () {
-          Get.snackbar(
-            'Coming Soon',
-            'User selection screen will be implemented',
-            snackPosition: SnackPosition.BOTTOM,
-          );
-        },
+        heroTag: 'chat_fab',
+        onPressed: controller.startNewChat, // UPDATED: Call startNewChat
         backgroundColor: kSecondaryColor,
         child: const Icon(Icons.add_comment, color: Colors.white),
       ),
@@ -158,7 +152,7 @@ class ChatHeadScreen extends GetView<ChatHeadController> {
       name: otherParticipant?.name ?? 'User',
       lastMsg: chat.lastMessage?.content ?? 'No messages yet',
       time: controller.formatMessageTime(lastMessageTime),
-      isOnline: false, // TODO: Implement online status
+      isOnline: false,
       isNewMessage: hasUnread,
       unreadCount: unreadCount,
       onTap: () => controller.openChat(chat),
@@ -180,7 +174,7 @@ class ChatHeadScreen extends GetView<ChatHeadController> {
           ),
           const SizedBox(height: 8),
           MyText(
-            text: 'Start a conversation with someone',
+            text: 'Tap the + button to start chatting',
             size: 14,
             color: kQuaternaryColor,
           ),

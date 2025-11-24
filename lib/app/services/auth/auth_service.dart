@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:get/get.dart';
 import 'package:photo_bug/app/data/models/google_tokens_model.dart';
+import 'package:photo_bug/app/models/allUsers.dart';
 import 'package:photo_bug/app/services/auth/token_dialog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:photo_bug/app/data/models/user_model.dart' as models;
@@ -658,6 +659,111 @@ class AuthService extends GetxService {
       await _initializeGoogleSignIn();
     }
   }
+  // Add this method to auth_service.dart
+
+  Future<ApiResponse<AllUsersResponse>> getAllUsers({
+    int page = 1,
+    int limit = 100,
+  }) async {
+    try {
+      _isLoading.value = true;
+
+      final url =
+          '${ApiConfig.fullApiUrl}${ApiConfig.endpoints.allUsers}?page=$page&limit=$limit';
+      final headers =
+          authToken != null
+              ? ApiConfig.authHeaders(authToken!)
+              : ApiConfig.defaultHeaders;
+
+      print('🌐 Fetching users from: $url');
+
+      final getConnect = GetConnect(timeout: ApiConfig.connectTimeout);
+      final response = await getConnect.get(url, headers: headers);
+
+      print('📥 Raw Response Status: ${response.statusCode}');
+      print('📥 Raw Response Body Type: ${response.body.runtimeType}');
+      print('📥 Raw Response Body: ${response.body}');
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final responseData = response.body;
+
+        // Handle the response properly
+        if (responseData is Map<String, dynamic>) {
+          // Response is already a Map
+          final usersResponse = AllUsersResponse.fromJson(responseData);
+          print('✅ Loaded ${usersResponse.data.length} users');
+
+          return ApiResponse<AllUsersResponse>(
+            success: true,
+            statusCode: response.statusCode,
+            data: usersResponse,
+            message: 'Users loaded successfully',
+          );
+        } else {
+          print('❌ Unexpected response format: ${responseData.runtimeType}');
+          return ApiResponse<AllUsersResponse>(
+            success: false,
+            error: 'Unexpected response format',
+            statusCode: response.statusCode,
+          );
+        }
+      } else {
+        final errorData = response.body ?? {};
+        final errorMessage =
+            errorData['message'] ??
+            errorData['error'] ??
+            'Failed to load users';
+
+        print('❌ API Error: $errorMessage');
+
+        return ApiResponse<AllUsersResponse>(
+          success: false,
+          error: errorMessage,
+          statusCode: response.statusCode,
+        );
+      }
+    } catch (e, stackTrace) {
+      print('❌ Exception in getAllUsers: $e');
+      print('Stack trace: $stackTrace');
+
+      return ApiResponse<AllUsersResponse>(
+        success: false,
+        error: 'Failed to get users: $e',
+      );
+    } finally {
+      _isLoading.value = false;
+    }
+  }
+
+  /// Search/Filter users by name, username, or email
+  Future<ApiResponse<List<UserBasicInfo>>> searchUsers(String query) async {
+    try {
+      final response = await getAllUsers();
+
+      if (response.success && response.data != null) {
+        final filteredUsers =
+            response.data!.data
+                .where((user) => user.searchText.contains(query.toLowerCase()))
+                .toList();
+
+        return ApiResponse<List<UserBasicInfo>>(
+          success: true,
+          data: filteredUsers,
+          message: 'Found ${filteredUsers.length} users',
+        );
+      }
+
+      return ApiResponse<List<UserBasicInfo>>(
+        success: false,
+        error: response.error ?? 'Search failed',
+      );
+    } catch (e) {
+      return ApiResponse<List<UserBasicInfo>>(
+        success: false,
+        error: 'Search failed: $e',
+      );
+    }
+  }
 
   /// Google Sign-In - CORRECTED VERSION
   /// Google Sign-In - CORRECTED VERSION WITH TOKEN DIALOG
@@ -702,19 +808,6 @@ class AuthService extends GetxService {
         name: googleUser.displayName ?? '',
         profilePicture: googleUser.photoUrl,
       );
-      if (serverAuthCode != null) {
-        final tokenResponse = await _generateGoogleTokens(
-          email: googleUser.email,
-          serverAuthCode: serverAuthCode,
-        );
-
-        if (tokenResponse.success) {
-          print('✅ Backend tokens generated successfully');
-          await refreshUserData(); // Refresh to get updated tokens from backend
-        } else {
-          print('⚠️ Backend token generation failed: ${tokenResponse.error}');
-        }
-      }
 
       // Step 4: Login or Register (this sets authToken)
       final response = await _handleSocialAuthWithTokens(
@@ -725,6 +818,19 @@ class AuthService extends GetxService {
       // Step 5: ONLY if login/register succeeded, generate backend tokens
       if (response.success && response.data?.token != null) {
         print('✅ User authenticated, now generating backend tokens');
+        if (serverAuthCode != null) {
+          final tokenResponse = await _generateGoogleTokens(
+            email: googleUser.email,
+            serverAuthCode: serverAuthCode,
+          );
+
+          if (tokenResponse.success) {
+            print('✅ Backend tokens generated successfully');
+            await refreshUserData(); // Refresh to get updated tokens from backend
+          } else {
+            print('⚠️ Backend token generation failed: ${tokenResponse.error}');
+          }
+        }
 
         // Save the token first (CRITICAL!)
         await _saveToken(response.data!.token!);
@@ -972,7 +1078,6 @@ class AuthService extends GetxService {
       final request = auth_models.SocialLoginRequest(
         socialProvider: socialUserInfo.provider,
         socialId: socialUserInfo.id,
-        deviceToken: await _getDeviceToken(),
       );
 
       final response = await _makeAuthRequest(

@@ -393,37 +393,37 @@ class UserEventDetails extends StatelessWidget {
                   weight: FontWeight.w600,
                 ),
               ),
-              if (controller.isMyEvent.value)
-                GestureDetector(
-                  onTap: () {
-                    if (controller.event.value != null) {
-                      controller.showCreateFolderDialog();
-                    }
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: kSecondaryColor,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.add, size: 14, color: kTertiaryColor),
-                        const SizedBox(width: 4),
-                        MyText(
-                          text: 'Create Folder',
-                          size: 11,
-                          color: kTertiaryColor,
-                          weight: FontWeight.w600,
-                        ),
-                      ],
-                    ),
+
+              GestureDetector(
+                onTap: () {
+                  if (controller.event.value != null) {
+                    controller.showCreateFolderDialog();
+                  }
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: kSecondaryColor,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.add, size: 14, color: kTertiaryColor),
+                      const SizedBox(width: 4),
+                      MyText(
+                        text: 'Create Folder',
+                        size: 11,
+                        color: kTertiaryColor,
+                        weight: FontWeight.w600,
+                      ),
+                    ],
                   ),
                 ),
+              ),
             ],
           ),
           const SizedBox(height: 12),
@@ -636,7 +636,7 @@ class UserEventDetails extends StatelessWidget {
           TextButton(
             onPressed: () {
               Get.back();
-              Future.delayed(const Duration(milliseconds: 300), () {
+              Future.delayed(const Duration(milliseconds: 100), () {
                 controller.deleteEvent();
               });
             },

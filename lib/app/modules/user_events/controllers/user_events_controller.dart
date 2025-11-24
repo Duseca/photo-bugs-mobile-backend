@@ -14,6 +14,7 @@ class UserEventsController extends GetxController
     with GetSingleTickerProviderStateMixin {
   // Services
   final EventService _eventService = EventService.instance;
+  final AuthService _authService = AuthService.instance;
 
   // Observable variables
   final RxList<Event> myEvents = <Event>[].obs;
@@ -31,7 +32,14 @@ class UserEventsController extends GetxController
   StreamSubscription? _photographerEventsSubscription;
 
   // Filter options
-  final List<String> typeOptions = ['All', 'Pending', 'Confirmed', 'Completed'];
+  final List<String> typeOptions = [
+    'All',
+    'Photography Workshop',
+    'Wedding',
+    'Corporate',
+    'Sports',
+    'Birthday',
+  ];
   final List<String> sortOptions = ['None', 'Old to new', 'New to Old'];
   final List<String> locationOptions = [
     'New York',
@@ -43,8 +51,7 @@ class UserEventsController extends GetxController
   // Get current user ID from AuthService
   String? getCurrentUserId() {
     try {
-      final authService = Get.find<AuthService>();
-      return authService.currentUser?.id;
+      return _authService.currentUser?.id;
     } catch (e) {
       print('Error getting current user ID: $e');
       return null;
@@ -73,8 +80,10 @@ class UserEventsController extends GetxController
     _createdEventsSubscription = _eventService.createdEventsStream.listen(
       (events) {
         myEvents.value = events;
+        print('✅ Stream - My Events updated: ${events.length}');
       },
       onError: (error) {
+        print('❌ Stream error - My Events: $error');
         Get.snackbar(
           'Error',
           'Failed to load events: $error',
@@ -88,8 +97,10 @@ class UserEventsController extends GetxController
         .listen(
           (events) {
             sharedEvents.value = events;
+            print('✅ Stream - Shared Events updated: ${events.length}');
           },
           onError: (error) {
+            print('❌ Stream error - Shared Events: $error');
             Get.snackbar(
               'Error',
               'Failed to load shared events: $error',
@@ -99,18 +110,26 @@ class UserEventsController extends GetxController
         );
   }
 
-  // Load events data from API
+  // Load events data from API - UPDATED VERSION
   Future<void> loadEvents() async {
     if (isLoading.value) return;
 
     isLoading.value = true;
     try {
-      // Load both created and photographer events
-      await Future.wait([
-        _eventService.getUserCreatedEvents(),
-        _eventService.getUserPhotographerEvents(),
-      ]);
+      final currentUserId = getCurrentUserId();
+      print('👤 Loading events for user: $currentUserId');
+
+      // Load created events (My Events)
+      await _loadMyEvents();
+
+      // Load shared events (from All Events API)
+      await _loadSharedEvents();
+
+      print('✅ Events loaded successfully');
+      print('   My Events: ${myEvents.length}');
+      print('   Shared Events: ${sharedEvents.length}');
     } catch (e) {
+      print('❌ Error loading events: $e');
       Get.snackbar(
         'Error',
         'Failed to load events',
@@ -119,6 +138,88 @@ class UserEventsController extends GetxController
     } finally {
       isLoading.value = false;
     }
+  }
+
+  /// Load My Events (created by current user)
+  Future<void> _loadMyEvents() async {
+    final response = await _eventService.getUserCreatedEvents();
+
+    if (response.success && response.data != null) {
+      myEvents.value = response.data!;
+      print('✅ MY EVENTS loaded: ${myEvents.length}');
+
+      // Debug log
+      for (var event in myEvents) {
+        print('   - ${event.name} (Creator: ${event.creatorId})');
+      }
+    } else {
+      print('❌ Failed to load my events: ${response.error}');
+      myEvents.clear();
+    }
+  }
+
+  /// Load Shared Events (from All Events, excluding user's own)
+  Future<void> _loadSharedEvents() async {
+    final response = await _eventService.getAllEvents();
+
+    if (response.success && response.data != null) {
+      final currentUserId = getCurrentUserId();
+
+      print('📊 SHARED EVENTS - Processing...');
+      print('👤 Current User ID: $currentUserId');
+      print('📦 Total events from API: ${response.data!.length}');
+
+      // Filter events: exclude own created events, include only where user is photographer or recipient
+      final shared =
+          response.data!.where((event) {
+            // CRITICAL: Use creatorId instead of createdBy
+            final isCreator = event.creatorId == currentUserId;
+            final isPhotographer = event.photographerId == currentUserId;
+            final isRecipient = _isUserRecipient(event);
+
+            print('🔍 Event: ${event.name}');
+            print('   Creator ID: ${event.creatorId}');
+            print('   Photographer ID: ${event.photographerId}');
+            print('   Is Creator: $isCreator');
+            print('   Is Photographer: $isPhotographer');
+            print('   Is Recipient: $isRecipient');
+
+            // Show only if user is photographer OR recipient, but NOT creator
+            final shouldShow = !isCreator && (isPhotographer || isRecipient);
+            print('   Should Show: $shouldShow');
+
+            return shouldShow;
+          }).toList();
+
+      sharedEvents.value = shared;
+
+      print('✅ SHARED EVENTS - Final Count: ${sharedEvents.length}');
+      for (var event in sharedEvents) {
+        print(
+          '   - ${event.name} (Creator: ${event.creatorId}, Photographer: ${event.photographerId})',
+        );
+      }
+    } else {
+      print('❌ Failed to load shared events: ${response.error}');
+      sharedEvents.clear();
+    }
+  }
+
+  /// Check if current user is a recipient of the event
+  bool _isUserRecipient(Event event) {
+    final currentUserId = getCurrentUserId();
+    final currentUserEmail = _authService.currentUser?.email;
+
+    if (event.recipients == null || event.recipients!.isEmpty) {
+      return false;
+    }
+
+    final isRecipient = event.recipients!.any(
+      (recipient) =>
+          recipient.id == currentUserId || recipient.email == currentUserEmail,
+    );
+
+    return isRecipient;
   }
 
   // Create new event
@@ -135,6 +236,8 @@ class UserEventsController extends GetxController
           backgroundColor: Colors.green,
           colorText: Colors.white,
         );
+        // Reload events after creating
+        await loadEvents();
       }
 
       return response;
@@ -164,26 +267,29 @@ class UserEventsController extends GetxController
   // Filter events by type
   void filterByType(String type) {
     selectedType.value = type;
+    print('🔍 Filter by type: $type');
   }
 
   // Sort events
   void sortEvents(String sortBy) {
     selectedSort.value = sortBy;
+    print('🔍 Sort by: $sortBy');
   }
 
   // Filter by location
   void filterByLocation(String location) {
     selectedLocation.value = location;
+    print('🔍 Filter by location: $location');
   }
 
   // Get filtered my events
   List<Event> get filteredMyEvents {
     List<Event> events = List.from(myEvents);
 
-    // Filter by type/status
+    // Filter by type
     if (selectedType.value != 'All') {
-      final statusFilter = _getEventStatusFromType(selectedType.value);
-      events = events.where((event) => event.status == statusFilter).toList();
+      events =
+          events.where((event) => event.type == selectedType.value).toList();
     }
 
     // Sort events
@@ -196,10 +302,10 @@ class UserEventsController extends GetxController
   List<Event> get filteredSharedEvents {
     List<Event> events = List.from(sharedEvents);
 
-    // Filter by type/status
+    // Filter by type
     if (selectedType.value != 'All') {
-      final statusFilter = _getEventStatusFromType(selectedType.value);
-      events = events.where((event) => event.status == statusFilter).toList();
+      events =
+          events.where((event) => event.type == selectedType.value).toList();
     }
 
     // Sort events
@@ -212,37 +318,26 @@ class UserEventsController extends GetxController
   List<Event> _applySorting(List<Event> events) {
     if (selectedSort.value == 'Old to new') {
       events.sort((a, b) {
-        final dateA = a.createdAt ?? DateTime.now();
-        final dateB = b.createdAt ?? DateTime.now();
+        final dateA = a.date ?? a.createdAt ?? DateTime.now();
+        final dateB = b.date ?? b.createdAt ?? DateTime.now();
         return dateA.compareTo(dateB);
       });
     } else if (selectedSort.value == 'New to Old') {
       events.sort((a, b) {
-        final dateA = a.createdAt ?? DateTime.now();
-        final dateB = b.createdAt ?? DateTime.now();
+        final dateA = a.date ?? a.createdAt ?? DateTime.now();
+        final dateB = b.date ?? b.createdAt ?? DateTime.now();
         return dateB.compareTo(dateA);
       });
     }
     return events;
   }
 
-  // Convert filter type to EventStatus
-  EventStatus _getEventStatusFromType(String type) {
-    switch (type) {
-      case 'Pending':
-        return EventStatus.pending;
-      case 'Confirmed':
-        return EventStatus.confirmed;
-      case 'Completed':
-        return EventStatus.completed;
-      default:
-        return EventStatus.pending;
-    }
-  }
-
   // Navigate to add new event
   void navigateToAddEvent() {
-    Get.to(() => const UserAddEvent());
+    Get.to(() => const UserAddEvent())?.then((_) {
+      // Refresh events when coming back
+      refreshEvents();
+    });
   }
 
   // Navigate to event details
@@ -250,19 +345,15 @@ class UserEventsController extends GetxController
     // Set selected event in service
     _eventService.setSelectedEvent(event);
 
-    if (!isMyEvent) {
+    if (isMyEvent) {
       Get.to(
-        () => const CreatorEventDetails(),
-        arguments: {
-          'eventId': event.id,
-          'event': _convertEventToMap(event),
-          'isMyEvent': true,
-        },
+        () => const UserEventDetails(),
+        arguments: {'eventId': event.id, 'event': event, 'isMyEvent': true},
       );
     } else {
       Get.to(
         () => const UserEventDetails(),
-        arguments: {'eventId': event.id, 'event': event, 'isMyEvent': false},
+        arguments: {'eventId': event.id, 'event': event, 'isMyEvent': true},
       );
     }
   }
@@ -286,6 +377,7 @@ class UserEventsController extends GetxController
 
   // Refresh events
   Future<void> refreshEvents() async {
+    print('🔄 Refreshing events...');
     await loadEvents();
   }
 
@@ -371,6 +463,8 @@ class UserEventsController extends GetxController
           backgroundColor: Colors.green,
           colorText: Colors.white,
         );
+        // Refresh events after deletion
+        await loadEvents();
         Get.back(); // Go back if on event details page
       } else {
         Get.snackbar(

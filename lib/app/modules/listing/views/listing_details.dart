@@ -12,6 +12,7 @@ import 'package:photo_bug/app/core/constants/app_sizes.dart';
 import 'package:photo_bug/app/core/common_widget/common_image_view_widget.dart';
 import 'package:photo_bug/app/core/common_widget/my_text_widget.dart';
 import 'package:intl/intl.dart';
+import 'package:photo_bug/app/modules/listing/views/write_review_dialog.dart';
 
 class ListingDetails extends GetView<ListingDetailsController> {
   const ListingDetails({super.key});
@@ -477,12 +478,31 @@ class ListingDetails extends GetView<ListingDetailsController> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          MyText(
-            text: 'Creator',
-            size: 16,
-            weight: FontWeight.w700,
-            paddingBottom: 12,
+          Row(
+            children: [
+              MyText(text: 'Creator', size: 16, weight: FontWeight.w700),
+              const Spacer(),
+              // Write Review Button
+              if (creator.id != null)
+                TextButton.icon(
+                  onPressed: () => _showWriteReviewDialog(creator),
+                  icon: const Icon(Icons.rate_review, size: 18),
+                  label: const Text('Write Review'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: kSecondaryColor,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      side: BorderSide(color: kSecondaryColor.withOpacity(0.3)),
+                    ),
+                  ),
+                ),
+            ],
           ),
+          const SizedBox(height: 12),
           Row(
             children: [
               ClipRRect(
@@ -552,6 +572,40 @@ class ListingDetails extends GetView<ListingDetailsController> {
         ],
       ),
     );
+  }
+
+  void _showWriteReviewDialog(CreatorInfo creator) {
+    if (creator.id == null) {
+      Get.snackbar(
+        'Error',
+        'Creator information not available',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+      return;
+    }
+
+    // Use email as name, or userName, or fallback to "Creator"
+    String creatorName = 'Creator';
+    if (creator.email != null && creator.email!.isNotEmpty) {
+      creatorName = creator.email!;
+    } else if (creator.userName != null && creator.userName!.isNotEmpty) {
+      creatorName = creator.userName!;
+    } else if (creator.name != null && creator.name!.isNotEmpty) {
+      creatorName = creator.name!;
+    }
+
+    Get.showWriteReviewDialog(
+      creatorId: creator.id!,
+      creatorName: creatorName,
+      creatorImage: creator.profilePicture,
+    ).then((result) {
+      if (result == true) {
+        // Refresh the page after successful review
+        controller.loadPhotoDetails();
+      }
+    });
   }
 
   Widget _buildInfoRow({

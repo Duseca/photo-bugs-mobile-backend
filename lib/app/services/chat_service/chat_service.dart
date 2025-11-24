@@ -258,11 +258,16 @@ class ChatService extends GetxService {
 
   /// Mark message as read
   /// Endpoint: PUT /api/chats/{chatId}/messages/{messageId}
+  /// Mark message as read - UPDATED VERSION
   Future<ApiResponse<dynamic>> markMessageAsRead(
     String chatId,
     String messageId,
   ) async {
     try {
+      print('📩 Marking message as read...');
+      print('   Chat ID: $chatId');
+      print('   Message ID: $messageId');
+
       final requestData = {'markAsRead': true, 'chatId': chatId};
 
       final response = await _makeApiRequest(
@@ -272,10 +277,19 @@ class ChatService extends GetxService {
       );
 
       if (response.success) {
-        // Reload chat to update read status
-        await getChatById(chatId);
+        print('✅ Message marked as read successfully');
+
+        // Update local chat data
+        final chatIndex = _userChats.indexWhere((c) => c.id == chatId);
+        if (chatIndex != -1) {
+          // Reload chat to get updated data
+          await getChatById(chatId);
+        }
+
+        // Update unread count
         _updateUnreadCount();
-        print('✅ Message marked as read');
+      } else {
+        print('❌ Failed to mark as read: ${response.error}');
       }
 
       return response;

@@ -85,7 +85,6 @@ class ListingController extends GetxController {
         listings.value = List<Photo>.from(serviceListings);
         totalPhotosCount.value = _listingService.totalPhotos;
         print('✅ Controller: Refreshed ${listings.length} listings');
-        _showSuccess('Photos refreshed successfully');
       } else {
         _showError(response.error ?? 'Failed to refresh photos');
       }

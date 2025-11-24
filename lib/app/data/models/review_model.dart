@@ -7,7 +7,7 @@ class Review {
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
-  // Additional fields from reviewer (populated by backend)
+  // Additional fields from reviewer (populated locally)
   final String? reviewerName;
   final String? reviewerProfilePicture;
 
@@ -26,10 +26,15 @@ class Review {
   factory Review.fromJson(Map<String, dynamic> json) {
     return Review(
       id: json['_id'] ?? json['id'] ?? '',
-      reviewerId: json['reviewer_id'] ?? json['reviewerId'] ?? '',
-      reviewForId: json['review_for_id'] ?? json['reviewForId'] ?? '',
+      reviewerId:
+          json['review_by'] ?? json['reviewer_id'] ?? json['reviewerId'] ?? '',
+      reviewForId:
+          json['review_for'] ??
+          json['review_for_id'] ??
+          json['reviewForId'] ??
+          '',
       ratings: json['ratings'] ?? 0,
-      comment: json['comment'],
+      comment: json['description'] ?? json['comment'],
       createdAt:
           json['createdAt'] != null ? DateTime.parse(json['createdAt']) : null,
       updatedAt:
@@ -43,15 +48,40 @@ class Review {
   Map<String, dynamic> toJson() {
     return {
       '_id': id,
-      'reviewer_id': reviewerId,
-      'review_for_id': reviewForId,
+      'review_by': reviewerId,
+      'review_for': reviewForId,
       'ratings': ratings,
-      'comment': comment,
+      'description': comment,
       'createdAt': createdAt?.toIso8601String(),
       'updatedAt': updatedAt?.toIso8601String(),
       'reviewer_name': reviewerName,
       'reviewer_profile_picture': reviewerProfilePicture,
     };
+  }
+
+  Review copyWith({
+    String? id,
+    String? reviewerId,
+    String? reviewForId,
+    int? ratings,
+    String? comment,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    String? reviewerName,
+    String? reviewerProfilePicture,
+  }) {
+    return Review(
+      id: id ?? this.id,
+      reviewerId: reviewerId ?? this.reviewerId,
+      reviewForId: reviewForId ?? this.reviewForId,
+      ratings: ratings ?? this.ratings,
+      comment: comment ?? this.comment,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      reviewerName: reviewerName ?? this.reviewerName,
+      reviewerProfilePicture:
+          reviewerProfilePicture ?? this.reviewerProfilePicture,
+    );
   }
 }
 
@@ -68,9 +98,9 @@ class CreateReviewRequest {
 
   Map<String, dynamic> toJson() {
     return {
-      'review_for_id': reviewForId,
+      'review_for': reviewForId,
       'ratings': ratings,
-      if (comment != null) 'comment': comment,
+      if (comment != null) 'description': comment,
     };
   }
 }
@@ -89,7 +119,7 @@ class UpdateReviewRequest {
     }
 
     if (comment != null) {
-      data['comment'] = comment;
+      data['description'] = comment;
     }
 
     return data;

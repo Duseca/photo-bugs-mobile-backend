@@ -140,6 +140,8 @@ class HomeController extends GetxController {
 
   /// Initialize data on controller creation
   Future<void> _initializeData() async {
+    print('🔑 Retrieved auth token ${_authService.authToken}');
+
     await loadTrendingPhotos();
     _loadFavorites(); // Load favorites after photos are loaded
   }
@@ -500,7 +502,7 @@ class HomeController extends GetxController {
     try {
       isLoadingEvents.value = true;
 
-      final response = await _eventService.getUserCreatedEvents();
+      final response = await _eventService.getAllEventsForUpload();
 
       if (response.success && response.data != null) {
         userEvents.value = response.data!;
@@ -521,6 +523,9 @@ class HomeController extends GetxController {
     try {
       isLoadingFolders.value = true;
       selectedFolderId.value = ''; // Clear previous selection
+
+      // 🔧 FIX: Clear cache for this event before loading
+      _folderService.clearEventCache(eventId);
 
       final response = await _folderService.getFoldersByEvent(eventId);
 

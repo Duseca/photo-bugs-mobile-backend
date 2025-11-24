@@ -265,7 +265,6 @@ class BottomNavController extends GetxController
       // Handle double tap on chat
       try {
         final chatController = Get.find<ChatHeadController>();
-        // chatController.scrollToTop();
       } catch (e) {
         print('ChatHeadController not found: $e');
       }

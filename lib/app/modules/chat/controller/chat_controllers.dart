@@ -2,9 +2,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:photo_bug/app/data/models/chat_model.dart';
+import 'package:photo_bug/app/models/allUsers.dart';
+import 'package:photo_bug/app/modules/user_events/widgets/user_widget.dart';
 import 'package:photo_bug/app/routes/app_pages.dart';
 import 'package:photo_bug/app/services/auth/auth_service.dart';
 import 'package:photo_bug/app/services/chat_service/chat_service.dart';
+
+// chat_controllers.dart - ChatController class
 
 class ChatController extends GetxController {
   final ChatService _chatService = ChatService.instance;
@@ -38,7 +42,7 @@ class ChatController extends GetxController {
     }
 
     loadMessages();
-    //_startAutoRefresh();
+    _markAllMessagesAsRead(); // NEW: Mark messages as read when chat opens
   }
 
   @override
@@ -47,33 +51,6 @@ class ChatController extends GetxController {
     messageController.dispose();
     scrollController.dispose();
     super.onClose();
-  }
-
-  /// Start auto-refresh for real-time updates
-  void _startAutoRefresh() {
-    _refreshTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
-      if (currentChatId.value.isNotEmpty) {
-        _refreshMessages();
-      }
-    });
-  }
-
-  /// Refresh messages silently
-  Future<void> _refreshMessages() async {
-    if (currentChatId.value.isEmpty) return;
-
-    try {
-      final response = await _chatService.getChatById(currentChatId.value);
-      if (response.success && response.data != null) {
-        final newMessages = response.data!.messages;
-        if (newMessages.length != messages.length) {
-          messages.assignAll(newMessages);
-          scrollToBottom();
-        }
-      }
-    } catch (e) {
-      // Silently fail
-    }
   }
 
   /// Load messages for current chat
@@ -90,6 +67,9 @@ class ChatController extends GetxController {
         Future.delayed(const Duration(milliseconds: 100), () {
           scrollToBottom();
         });
+
+        // NEW: Mark unread messages as read after loading
+        await _markAllMessagesAsRead();
       } else {
         _showError(response.error ?? 'Failed to load messages');
       }
@@ -97,6 +77,47 @@ class ChatController extends GetxController {
       _showError('Failed to load messages: $e');
     } finally {
       isLoading.value = false;
+    }
+  }
+
+  /// Mark all unread messages as read - NEW METHOD
+  Future<void> _markAllMessagesAsRead() async {
+    if (currentChatId.value.isEmpty || messages.isEmpty) return;
+
+    try {
+      final currentUserId = _authService.currentUser?.id;
+      if (currentUserId == null) return;
+
+      // Find unread messages from other user
+      final unreadMessages =
+          messages.where((msg) {
+            return msg.createdBy != currentUserId && !msg.isRead;
+          }).toList();
+
+      print('📬 Unread messages to mark: ${unreadMessages.length}');
+
+      // Mark each unread message as read
+      for (final message in unreadMessages) {
+        if (message.id != null) {
+          print('✅ Marking message as read: ${message.id}');
+          await _chatService.markMessageAsRead(
+            currentChatId.value,
+            message.id!,
+          );
+        }
+      }
+
+      // Refresh chat to update unread count
+      if (unreadMessages.isNotEmpty) {
+        print('🔄 Refreshing chat to update unread count...');
+        final response = await _chatService.getChatById(currentChatId.value);
+        if (response.success && response.data != null) {
+          messages.assignAll(response.data!.messages);
+        }
+      }
+    } catch (e) {
+      print('❌ Error marking messages as read: $e');
+      // Don't show error to user - this is a background operation
     }
   }
 
@@ -191,7 +212,6 @@ class ChatHeadController extends GetxController {
     super.onInit();
     loadChatHeads();
     _setupListeners();
-    //  _startAutoRefresh();
   }
 
   @override
@@ -228,13 +248,14 @@ class ChatHeadController extends GetxController {
   }
 
   /// Load chat heads from API
-  void loadChatHeads() async {
+  Future<void> loadChatHeads() async {
     isLoading.value = true;
     try {
       final response = await chatService.getUserChats();
 
       if (response.success && response.data != null) {
         chatHeads.assignAll(response.data!);
+        print('✅ Loaded ${chatHeads.length} chats');
       } else {
         _showError(response.error ?? 'Failed to load chats');
       }
@@ -259,27 +280,76 @@ class ChatHeadController extends GetxController {
         'chatId': chat.id,
         'userName': otherParticipant?.name ?? 'User',
         'userImage': otherParticipant?.profilePicture ?? '',
-        'isOnline': false, // TODO: Implement online status
+        'isOnline': false,
       },
     );
   }
 
-  /// Create new chat with user
+  /// Create new chat with user - UPDATED
   Future<void> createChatWithUser(String userId) async {
     try {
       isLoading.value = true;
 
+      print('📩 Creating chat with user: $userId');
+
       final response = await chatService.getOrCreateChat(userId);
 
       if (response.success && response.data != null) {
+        print('✅ Chat created/retrieved successfully');
+
+        // Refresh chat list
+        await loadChatHeads();
+
+        // Open the chat
         openChat(response.data!);
       } else {
         _showError(response.error ?? 'Failed to create chat');
       }
     } catch (e) {
+      print('❌ Error creating chat: $e');
       _showError('Failed to create chat: $e');
     } finally {
       isLoading.value = false;
+    }
+  }
+
+  /// Start new chat - NEW METHOD
+  Future<void> startNewChat() async {
+    try {
+      print('🚀 Opening user selector dialog...');
+
+      // Show user selector dialog
+      final selectedUser = await Get.dialog<UserBasicInfo>(
+        const UserSelectorDialog(
+          title: 'Start New Chat',
+          subtitle: 'Select a user to start chatting',
+          showOnlyPhotographers: false, // Show all users
+        ),
+      );
+
+      if (selectedUser != null) {
+        print(
+          '✅ User selected: ${selectedUser.displayName} (${selectedUser.id})',
+        );
+
+        // Check if chat already exists
+        final existingChat = chatHeads.firstWhereOrNull(
+          (chat) => chat.participants.any((p) => p.id == selectedUser.id),
+        );
+
+        if (existingChat != null) {
+          print('💬 Chat already exists, opening...');
+          openChat(existingChat);
+        } else {
+          print('📩 Creating new chat...');
+          await createChatWithUser(selectedUser.id);
+        }
+      } else {
+        print('❌ No user selected');
+      }
+    } catch (e) {
+      print('❌ Error starting chat: $e');
+      _showError('Failed to start chat: $e');
     }
   }
 

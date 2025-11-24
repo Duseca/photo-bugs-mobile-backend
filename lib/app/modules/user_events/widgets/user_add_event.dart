@@ -1,12 +1,16 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:photo_bug/app/core/constants/app_colors.dart';
 import 'package:photo_bug/app/core/constants/app_images.dart';
 import 'package:photo_bug/app/core/constants/app_sizes.dart';
+
 import 'package:photo_bug/app/data/models/event_model.dart';
 import 'package:photo_bug/app/data/models/location_model.dart';
+import 'package:photo_bug/app/models/allUsers.dart';
 import 'package:photo_bug/app/modules/user_events/controllers/user_events_controller.dart';
+
 import 'package:photo_bug/app/modules/creator_events/widgets/share_event.dart';
 import 'package:photo_bug/app/core/common_widget/custom_dialog_widget.dart';
 import 'package:photo_bug/app/core/common_widget/custom_drop_down_widget.dart';
@@ -14,35 +18,48 @@ import 'package:photo_bug/app/core/common_widget/my_button_widget.dart';
 import 'package:photo_bug/app/core/common_widget/my_text_field_widget.dart';
 import 'package:photo_bug/app/core/common_widget/my_text_widget.dart';
 import 'package:photo_bug/app/core/common_widget/simple_app_bar_widget.dart';
+import 'package:photo_bug/app/modules/user_events/widgets/user_widget.dart';
 
 class UserAddEvent extends GetView<UserEventsController> {
   const UserAddEvent({super.key});
 
   @override
   Widget build(BuildContext context) {
+    // Controllers
     final nameController = TextEditingController();
     final longitudeController = TextEditingController();
     final latitudeController = TextEditingController();
     final dateController = TextEditingController();
     final timeStartController = TextEditingController();
     final timeEndController = TextEditingController();
+    final photographerController = TextEditingController();
 
+    // Reactive variables
     final selectedType = Rx<String?>(null);
     final selectedRole = Rx<String?>(null);
     final selectedDate = Rx<DateTime?>(null);
     final selectedTimeStart = Rx<TimeOfDay?>(null);
     final selectedTimeEnd = Rx<TimeOfDay?>(null);
     final selectedImage = Rx<String?>(null);
+    final selectedPhotographer = Rx<UserBasicInfo?>(null);
 
+    // Options
     final eventTypes = [
       'Wedding',
       'Birthday',
       'Corporate',
       'Sports',
       'Concert',
+      'Photography Workshop',
       'Other',
     ];
-    final eventRoles = ['Photographer', 'Videographer', 'Guest', 'Organizer'];
+    final eventRoles = [
+      'Photographer',
+      'Videographer',
+      'Guest',
+      'Organizer',
+      'Wildlife Photographer',
+    ];
 
     return Scaffold(
       appBar: simpleAppBar(title: 'Add New Event'),
@@ -53,7 +70,7 @@ class UserAddEvent extends GetView<UserEventsController> {
             child: ListView(
               padding: AppSizes.DEFAULT,
               children: [
-                // Image Upload
+                // Image Upload Section
                 Obx(
                   () => GestureDetector(
                     onTap: () {
@@ -116,9 +133,77 @@ class UserAddEvent extends GetView<UserEventsController> {
 
                 // Name Field
                 MyTextField(
-                  label: 'Name',
+                  label: 'Event Name',
                   controller: nameController,
                   hint: 'Enter event name',
+                ),
+
+                // Photographer Selector - NEW!
+                MyTextField(
+                  label: 'Photographer',
+                  controller: photographerController,
+                  hint: 'Select photographer',
+                  readOnly: true,
+                  onTap: () async {
+                    final selectedUser = await Get.dialog<UserBasicInfo>(
+                      const UserSelectorDialog(
+                        title: 'Select Photographer',
+                        subtitle: 'Choose a photographer for this event',
+                        showOnlyPhotographers: true,
+                      ),
+                    );
+
+                    if (selectedUser != null) {
+                      selectedPhotographer.value = selectedUser;
+                      photographerController.text = selectedUser.displayName;
+                    }
+                  },
+                  suffix: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Obx(
+                        () =>
+                            selectedPhotographer.value != null
+                                ? CircleAvatar(
+                                  radius: 12,
+                                  backgroundColor: kSecondaryColor.withOpacity(
+                                    0.2,
+                                  ),
+                                  backgroundImage:
+                                      selectedPhotographer
+                                                      .value!
+                                                      .profilePicture !=
+                                                  null &&
+                                              selectedPhotographer
+                                                  .value!
+                                                  .profilePicture!
+                                                  .isNotEmpty
+                                          ? NetworkImage(
+                                            selectedPhotographer
+                                                .value!
+                                                .profilePicture!,
+                                          )
+                                          : null,
+                                  child:
+                                      selectedPhotographer
+                                                      .value!
+                                                      .profilePicture ==
+                                                  null ||
+                                              selectedPhotographer
+                                                  .value!
+                                                  .profilePicture!
+                                                  .isEmpty
+                                          ? const Icon(
+                                            Icons.person,
+                                            size: 14,
+                                            color: kSecondaryColor,
+                                          )
+                                          : null,
+                                )
+                                : const Icon(Icons.person_add, size: 20),
+                      ),
+                    ],
+                  ),
                 ),
 
                 // Latitude Field (First - more intuitive)
@@ -130,7 +215,6 @@ class UserAddEvent extends GetView<UserEventsController> {
                     decimal: true,
                     signed: true,
                   ),
-
                   suffix: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [Image.asset(Assets.imagesLocation, height: 18)],
@@ -146,7 +230,6 @@ class UserAddEvent extends GetView<UserEventsController> {
                     decimal: true,
                     signed: true,
                   ),
-
                   suffix: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [Image.asset(Assets.imagesLocation, height: 18)],
@@ -264,6 +347,7 @@ class UserAddEvent extends GetView<UserEventsController> {
                       selectedType,
                       selectedRole,
                       selectedImage,
+                      selectedPhotographer,
                     ),
               ),
             ),
@@ -284,8 +368,9 @@ class UserAddEvent extends GetView<UserEventsController> {
     Rx<String?> selectedType,
     Rx<String?> selectedRole,
     Rx<String?> selectedImage,
+    Rx<UserBasicInfo?> selectedPhotographer,
   ) async {
-    // Validation
+    // Validation: Name
     if (nameController.text.trim().isEmpty) {
       Get.snackbar(
         'Error',
@@ -297,7 +382,19 @@ class UserAddEvent extends GetView<UserEventsController> {
       return;
     }
 
-    // Validate longitude and latitude
+    // Validation: Photographer
+    if (selectedPhotographer.value == null) {
+      Get.snackbar(
+        'Error',
+        'Please select a photographer',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+      return;
+    }
+
+    // Validation: Coordinates
     if (longitudeController.text.trim().isEmpty ||
         latitudeController.text.trim().isEmpty) {
       Get.snackbar(
@@ -348,6 +445,7 @@ class UserAddEvent extends GetView<UserEventsController> {
       return;
     }
 
+    // Validation: Date
     if (selectedDate.value == null) {
       Get.snackbar(
         'Error',
@@ -373,7 +471,7 @@ class UserAddEvent extends GetView<UserEventsController> {
       timeEnd = end.hour * 100 + end.minute;
     }
 
-    // Get current user ID for photographer field
+    // Get current user ID (event creator)
     final currentUserId = controller.getCurrentUserId();
 
     if (currentUserId == null) {
@@ -390,10 +488,11 @@ class UserAddEvent extends GetView<UserEventsController> {
     // Create Location object with GeoJSON format [longitude, latitude]
     final location = Location.fromCoordinates(longitude, latitude);
 
-    // Create event request
+    // Create event request with selected photographer
     final request = CreateEventRequest(
       name: nameController.text.trim(),
-      photographerId: currentUserId, // Required field
+      photographerId:
+          selectedPhotographer.value!.id, // Use selected photographer ID
       date: selectedDate.value,
       timeStart: timeStart,
       timeEnd: timeEnd,
@@ -404,13 +503,19 @@ class UserAddEvent extends GetView<UserEventsController> {
       matureContent: false,
     );
 
+    print(
+      '🚀 Creating event with photographer: ${selectedPhotographer.value!.displayName} (${selectedPhotographer.value!.id})',
+    );
+
     // Call controller method
     final response = await controller.createEvent(request);
 
     if (response.success) {
+      print('✅ Event created successfully');
       Get.back(); // Close add event screen
       _showSuccessDialog(context, response.data);
     } else {
+      print('❌ Event creation failed: ${response.error}');
       Get.snackbar(
         'Error',
         response.error ?? 'Failed to create event',
@@ -455,7 +560,9 @@ class UserAddEvent extends GetView<UserEventsController> {
                 buttonText: 'Share',
                 onTap: () {
                   Get.back();
-                  Get.to(() => ShareEvent());
+                  if (event != null) {
+                    Get.to(() => ShareEvent());
+                  }
                 },
               ),
               const SizedBox(height: 12),

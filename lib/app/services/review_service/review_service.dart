@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'package:get/get.dart';
 import 'package:photo_bug/app/data/models/review_model.dart';
+import 'package:photo_bug/app/data/models/user_model.dart' as models;
 import 'package:photo_bug/app/data/models/api_response.dart';
 import 'package:photo_bug/app/data/configs/api_configs.dart';
 import '../app/app_service.dart';
@@ -85,6 +86,19 @@ class ReviewService extends GetxService {
         },
       );
 
+      if (response.success && response.data != null) {
+        // Populate reviewer details
+        final reviewsWithDetails = await _populateReviewerDetails(
+          response.data!,
+        );
+        return ApiResponse<List<Review>>(
+          success: true,
+          data: reviewsWithDetails,
+          statusCode: response.statusCode,
+          message: response.message,
+        );
+      }
+
       return response;
     } catch (e) {
       return ApiResponse<List<Review>>(
@@ -93,6 +107,62 @@ class ReviewService extends GetxService {
       );
     } finally {
       _isLoading.value = false;
+    }
+  }
+
+  /// Populate reviewer details for a list of reviews
+  Future<List<Review>> _populateReviewerDetails(List<Review> reviews) async {
+    final updatedReviews = <Review>[];
+
+    for (final review in reviews) {
+      // Skip if already has reviewer details
+      if (review.reviewerName != null &&
+          review.reviewerProfilePicture != null) {
+        updatedReviews.add(review);
+        continue;
+      }
+
+      try {
+        final userResponse = await _getUserById(review.reviewerId);
+
+        if (userResponse.success && userResponse.data != null) {
+          final user = userResponse.data!;
+          final updatedReview = review.copyWith(
+            reviewerName: user.name ?? 'Anonymous',
+            reviewerProfilePicture: user.profilePicture,
+          );
+          updatedReviews.add(updatedReview);
+        } else {
+          updatedReviews.add(review);
+        }
+      } catch (e) {
+        print('Error fetching reviewer details for ${review.reviewerId}: $e');
+        updatedReviews.add(review);
+      }
+    }
+
+    return updatedReviews;
+  }
+
+  /// Get user by ID
+  Future<ApiResponse<models.User>> _getUserById(String userId) async {
+    try {
+      final url =
+          '${ApiConfig.fullApiUrl}${ApiConfig.endpoints.users}?userId=$userId';
+      final headers = ApiConfig.authHeaders(_authService.authToken!);
+
+      final getConnect = GetConnect(timeout: ApiConfig.connectTimeout);
+      final response = await getConnect.get(url, headers: headers);
+
+      return _handleResponse<models.User>(
+        response,
+        (json) => models.User.fromJson(json),
+      );
+    } catch (e) {
+      return ApiResponse<models.User>(
+        success: false,
+        error: 'Failed to get user: $e',
+      );
     }
   }
 
@@ -108,7 +178,18 @@ class ReviewService extends GetxService {
       );
 
       if (response.success && response.data != null) {
-        _selectedReview.value = response.data;
+        // Populate reviewer details
+        final reviewWithDetails = await _populateReviewerDetails([
+          response.data!,
+        ]);
+        _selectedReview.value = reviewWithDetails.first;
+
+        return ApiResponse<Review>(
+          success: true,
+          data: reviewWithDetails.first,
+          statusCode: response.statusCode,
+          message: response.message,
+        );
       }
 
       return response;
@@ -143,13 +224,26 @@ class ReviewService extends GetxService {
       );
 
       if (response.success && response.data != null) {
+        // Populate reviewer details
+        final reviewWithDetails = await _populateReviewerDetails([
+          response.data!,
+        ]);
+        final review = reviewWithDetails.first;
+
         // Add to user reviews list
-        _userReviews.insert(0, response.data!);
+        _userReviews.insert(0, review);
 
         // Clear cached average rating for the reviewed user
         _cachedAverageRatings.remove(request.reviewForId);
 
         print('Review created successfully');
+
+        return ApiResponse<Review>(
+          success: true,
+          data: review,
+          statusCode: response.statusCode,
+          message: response.message,
+        );
       }
 
       return response;
@@ -188,13 +282,26 @@ class ReviewService extends GetxService {
       );
 
       if (response.success && response.data != null) {
+        // Populate reviewer details
+        final reviewWithDetails = await _populateReviewerDetails([
+          response.data!,
+        ]);
+        final review = reviewWithDetails.first;
+
         // Update in lists
-        _updateReviewInLists(response.data!);
+        _updateReviewInLists(review);
 
         // Clear cached average rating
-        _cachedAverageRatings.remove(response.data!.reviewForId);
+        _cachedAverageRatings.remove(review.reviewForId);
 
         print('Review updated successfully');
+
+        return ApiResponse<Review>(
+          success: true,
+          data: review,
+          statusCode: response.statusCode,
+          message: response.message,
+        );
       }
 
       return response;
